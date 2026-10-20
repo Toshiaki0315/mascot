@@ -1,0 +1,142 @@
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#stage {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  box-sizing: border-box;
+  padding-bottom: 14px;
+}
+
+/* 16 ドット × 7px。ジャンプ（2 ドット）とハートの浮き上がり（2 ドット）が
+   はみ出さないよう、ウィンドウ上部に 4 ドット以上の余白を残している。
+   回転中は耳が横や下へはみ出すので、左右と下にも余白を取っている */
+#mascot {
+  width: 112px;
+  height: 112px;
+  overflow: visible;
+}
+
+/* 当たり判定は .hit のドット（キャラクター本体）だけにする */
+#mascot * {
+  pointer-events: none;
+}
+#mascot .hit {
+  pointer-events: visiblePainted;
+}
+
+.px-O { fill: #5a3a1f; }
+.px-B { fill: #ffd27a; }
+.px-E { fill: #3b2a1a; }
+.px-P { fill: #ff9a9a; }
+.px-H { fill: #ff4f7a; }
+.px-S { fill: rgba(0, 0, 0, 0.2); }
+
+#mascot-body {
+  transform-origin: 8px 8px;
+}
+#mascot.facing-left #mascot-body {
+  transform: scaleX(-1);
+}
+
+/* ドット絵らしく、動きはすべて 1 ドット単位のコマ送りにする */
+.bounce {
+  animation: bounce 1.2s steps(1) infinite;
+}
+#mascot.hover .bounce {
+  animation-duration: 0.4s;
+}
+#mascot.hover .px-P {
+  fill: #ff6f8a;
+}
+
+/* まばたき：目の上半分を体の色で塗りつぶす */
+.eye-top {
+  animation: blink 4s steps(1) infinite;
+}
+
+/* 足は 2 コマ。止まっている間は A だけを表示する */
+.legs-b {
+  visibility: hidden;
+}
+#mascot.walking .legs-a {
+  animation: frame-a 0.4s steps(1) infinite;
+}
+#mascot.walking .legs-b {
+  animation: frame-b 0.4s steps(1) infinite;
+}
+#mascot.walking .bounce {
+  animation: bounce 0.4s steps(1) infinite;
+}
+
+@keyframes bounce {
+  0% { transform: translateY(0); }
+  50% { transform: translateY(-1px); }
+}
+@keyframes blink {
+  0% { fill: #3b2a1a; }
+  94% { fill: #ffd27a; }
+}
+@keyframes frame-a {
+  0% { visibility: visible; }
+  50% { visibility: hidden; }
+}
+@keyframes frame-b {
+  0% { visibility: hidden; }
+  50% { visibility: visible; }
+}
+
+/* クリックされたら喜ぶ：2 回ジャンプ + ^^ の顔 + ハート */
+.face-happy,
+.heart {
+  display: none;
+}
+#mascot.happy .face-happy,
+#mascot.happy .heart {
+  display: inline;
+}
+#mascot.happy .bounce {
+  animation: jump 0.5s steps(1) 2;
+}
+#mascot.happy .heart {
+  animation: heart 1s steps(1) 1 forwards;
+}
+#mascot.happy .eye-top {
+  animation: none;
+}
+@keyframes jump {
+  0% { transform: translateY(0); }
+  20% { transform: translateY(-1px); }
+  40% { transform: translateY(-2px); }
+  60% { transform: translateY(-1px); }
+  80% { transform: translateY(0); }
+}
+@keyframes heart {
+  0% { transform: translateY(0); }
+  30% { transform: translateY(-1px); }
+  60% { transform: translateY(-2px); }
+  90% { visibility: hidden; }
+}
+
+/* ダブルクリックで 1 回転。45° ずつのコマ送りにしてドット絵らしくする */
+.spin {
+  transform-origin: 8px 7.5px;
+}
+#mascot.spinning .spin {
+  animation: spin 0.8s steps(8) 1;
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
