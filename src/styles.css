@@ -9,29 +9,34 @@ body {
   -webkit-user-select: none;
 }
 
-/* 大きさ（1 倍・2 倍）はウィンドウサイズで決まるので、寸法はすべてウィンドウ比で指定する。
-   等倍（148×158）のとき、キャラクターは 16 ドット × 7px = 112px */
+/* 大きさ（0.5 / 1 / 2 倍）はウィンドウサイズで決まるので、寸法はすべてウィンドウ幅に対する比で指定する。
+   等倍のウィンドウは 148×206。上の 48px はふきだし用、キャラクターは 16 ドット × 7px = 112px */
+:root {
+  --u: calc(100vw / 148);
+}
+
 #stage {
+  position: relative;
   width: 100%;
   height: 100%;
   display: flex;
   align-items: flex-end;
   justify-content: center;
   box-sizing: border-box;
-  padding-bottom: calc(100vh * 14 / 158);
+  padding-bottom: calc(var(--u) * 14);
 }
 
-/* ジャンプ（2 ドット）とハートの浮き上がり（2 ドット）、寝息の Z が
-   はみ出さないよう、ウィンドウ上部に 4 ドット以上の余白を残している。
+/* 頭の上には、ジャンプ（2 ドット）とハートの浮き上がり（2 ドット）、寝息の Z が
+   はみ出さない 32px の余白を残している。
    回転中は耳が横や下へはみ出すので、左右と下にも余白を取っている */
 #mascot {
-  width: calc(100vw * 112 / 148);
-  height: calc(100vw * 112 / 148);
+  width: calc(var(--u) * 112);
+  height: calc(var(--u) * 112);
   overflow: visible;
 }
 
 /* 全画面アプリの上では姿を消す */
-#mascot.suppressed {
+#stage.suppressed {
   visibility: hidden;
 }
 
@@ -43,15 +48,55 @@ body {
   pointer-events: visiblePainted;
 }
 
-.px-O { fill: #5a3a1f; }
-.px-B { fill: #ffd27a; }
-.px-E { fill: #3b2a1a; }
-.px-P { fill: #ff9a9a; }
+/* ---- キャラクターの色 ---- */
+
+#mascot {
+  --c-o: #5a3a1f; /* 輪郭 */
+  --c-b: #ffd27a; /* 体 */
+  --c-d: #e8a85a; /* 模様 1 */
+  --c-k: #3a3030; /* 模様 2 */
+  --c-e: #3b2a1a; /* 目 */
+  --c-p: #ff9a9a; /* ほっぺ */
+  --c-p-hover: #ff6f8a;
+}
+#mascot.char-kuro {
+  --c-o: #16161d;
+  --c-b: #3d3d4c;
+  --c-e: #ffd84a;
+  --c-p: #b0708a;
+  --c-p-hover: #e0809a;
+}
+#mascot.char-shiro {
+  --c-o: #7a7a88;
+  --c-b: #f7f4ef;
+  --c-p: #ffb0b0;
+}
+#mascot.char-mike {
+  --c-o: #6a5040;
+  --c-b: #f7f4ef;
+  --c-d: #f0a050;
+  --c-k: #3a3030;
+  --c-p: #ffb0b0;
+}
+#mascot.char-inu {
+  --c-o: #5a3a1f;
+  --c-b: #f3d9b1;
+  --c-d: #a0683a;
+  --c-e: #2a1a10;
+}
+
+.px-O { fill: var(--c-o); }
+.px-B { fill: var(--c-b); }
+.px-D { fill: var(--c-d); }
+.px-K { fill: var(--c-k); }
+.px-E { fill: var(--c-e); }
+.px-P { fill: var(--c-p); }
 .px-H { fill: #ff4f7a; }
 .px-Z { fill: #4a5a9a; }
 .px-S { fill: rgba(0, 0, 0, 0.2); }
 
-/* ドット絵らしく、動きはすべて 1 ドット単位のコマ送りにする */
+/* ---- 動き（ドット絵らしく、すべて 1 ドット単位のコマ送りにする） ---- */
+
 .bounce {
   animation: bounce 1.2s steps(1) infinite;
 }
@@ -59,7 +104,7 @@ body {
   animation-duration: 0.4s;
 }
 #mascot.hover .px-P {
-  fill: #ff6f8a;
+  fill: var(--c-p-hover);
 }
 
 /* 視線：カーソルの方や進む方へ目を 1 ドット寄せる */
@@ -70,7 +115,7 @@ body {
   transform: translateX(1px);
 }
 
-/* まばたき：目の上半分を体の色で塗りつぶす */
+/* まばたき：目の上半分を消す（下には体のドットがある） */
 .eye-top {
   animation: blink 4s steps(1) infinite;
 }
@@ -89,12 +134,20 @@ body {
   animation: bounce 0.4s steps(1) infinite;
 }
 
-/* 表情の部品は普段は隠しておく */
+/* 表情の部品は普段は隠しておく。表情を出している間は通常の目を隠す */
 .face-happy,
 .face-sleep,
 .face-yawn,
+.face-flying,
 .heart,
 .zzz {
+  display: none;
+}
+/* visibility だと、まばたきのアニメーションが子に visible を付けて見えてしまうので display で消す */
+#mascot.happy .eyes,
+#mascot.sleeping .eyes,
+#mascot.yawn .eyes,
+#mascot.flying .eyes {
   display: none;
 }
 
@@ -108,9 +161,6 @@ body {
 }
 #mascot.happy .heart {
   animation: heart 1s steps(1) 1 forwards;
-}
-#mascot.happy .eye-top {
-  animation: none;
 }
 
 /* ダブルクリックで 1 回転。45° ずつのコマ送りにしてドット絵らしくする */
@@ -148,13 +198,76 @@ body {
   animation: stretch 1.4s steps(1) 1;
 }
 
+/* 投げられた・落ちている：びっくり顔で足をばたつかせる。影は地面にないので消す */
+#mascot.flying .face-flying {
+  display: inline;
+}
+#mascot.flying .bounce {
+  animation: none;
+}
+#mascot.flying .legs-a {
+  animation: frame-a 0.2s steps(1) infinite;
+}
+#mascot.flying .legs-b {
+  animation: frame-b 0.2s steps(1) infinite;
+}
+#mascot.flying .shadow {
+  visibility: hidden;
+}
+
+/* ---- ふきだし ---- */
+
+#bubble {
+  position: absolute;
+  top: calc(var(--u) * 4);
+  left: 50%;
+  /* left: 50% のままだと幅が右半分に制限されるので、文字に合わせた幅にする */
+  width: max-content;
+  max-width: calc(var(--u) * 136);
+  box-sizing: border-box;
+  padding: calc(var(--u) * 3) calc(var(--u) * 6);
+  transform: translateX(-50%);
+  background: #fffdf6;
+  color: #3b2a1a;
+  border: calc(var(--u) * 2) solid #5a3a1f;
+  /* 角丸にせず、太い枠と影でドット絵風にする */
+  border-radius: 0;
+  box-shadow:
+    calc(var(--u) * 2) calc(var(--u) * 2) 0 rgba(0, 0, 0, 0.18);
+  font: 600 calc(var(--u) * 10) / 1.35 -apple-system, "Hiragino Sans", sans-serif;
+  text-align: center;
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  visibility: hidden;
+}
+#bubble.show {
+  visibility: visible;
+  animation: pop 0.24s steps(2) 1;
+}
+/* しっぽ */
+#bubble::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--u) * -7);
+  width: calc(var(--u) * 6);
+  height: calc(var(--u) * 5);
+  transform: translateX(-50%);
+  background: #5a3a1f;
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
+/* ---- キーフレーム ---- */
+
 @keyframes bounce {
   0% { transform: translateY(0); }
   50% { transform: translateY(-1px); }
 }
 @keyframes blink {
-  0% { fill: #3b2a1a; }
-  94% { fill: #ffd27a; }
+  0% { visibility: visible; }
+  94% { visibility: hidden; }
 }
 @keyframes frame-a {
   0% { visibility: visible; }
@@ -187,4 +300,8 @@ body {
   35% { transform: scale(0.94, 1.12); }
   75% { transform: scale(1, 1.06); }
   90% { transform: scale(1, 1); }
+}
+@keyframes pop {
+  0% { transform: translateX(-50%) scale(0.6); }
+  50% { transform: translateX(-50%) scale(1); }
 }

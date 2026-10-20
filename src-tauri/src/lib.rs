@@ -1,4 +1,5 @@
 mod geometry;
+mod physics;
 mod settings;
 mod system;
 mod tray;
@@ -7,7 +8,7 @@ mod wander;
 use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc,
+        Arc, Mutex,
     },
     thread,
     time::Duration,
@@ -17,13 +18,32 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 use tauri_plugin_autostart::MacosLauncher;
 
+use geometry::Rect;
 use settings::Store;
 
 pub(crate) const MAIN_WINDOW: &str = "main";
-const CURSOR_POLL_INTERVAL: Duration = Duration::from_millis(30);
-/// 等倍のときのウィンドウサイズ（tauri.conf.json と同じ値）
-const BASE_WIDTH: f64 = 148.0;
-const BASE_HEIGHT: f64 = 158.0;
+/// カーソルがキャラクターの近くにある時の監視間隔
+const CURSOR_POLL_NEAR: Duration = Duration::from_millis(30);
+/// カーソルが遠い時の監視間隔。遠い間はフロントエンドへも通知しない
+const CURSOR_POLL_FAR: Duration = Duration::from_millis(150);
+/// ウィンドウの大きさの何倍の距離までを「近い」とみなすか（視線を追う範囲より広く取る）
+const CURSOR_NEAR_RANGE: f64 = 3.0;
+/// 等倍のときのウィンドウサイズ（tauri.conf.json と同じ値）。
+/// 上の 48pt はふきだしを出すための余白
+pub(crate) const BASE_WIDTH: f64 = 148.0;
+pub(crate) const BASE_HEIGHT: f64 = 206.0;
+/// 等倍のとき、ウィンドウの下端から足元までの距離（下の余白 14pt + 影 1 ドット 7pt）
+pub(crate) const BASE_FOOT_OFFSET: f64 = 21.0;
+/// 等倍のとき、足元から耳の先までの高さ（15 ドット × 7pt）
+pub(crate) const BASE_HEAD_HEIGHT: f64 = 105.0;
+
+/// ほかのスレッドが毎回メインスレッドへ問い合わせなくて済むよう、
+/// 頭脳スレッドが知っているウィンドウの位置と倍率を置いておく
+#[derive(Clone, Copy)]
+pub(crate) struct Geometry {
+    pub rect: Rect,
+    pub scale_factor: f64,
+}
 
 /// スレッド間で共有する状態
 pub(crate) struct Shared {
@@ -33,7 +53,20 @@ pub(crate) struct Shared {
     reset: AtomicBool,
     /// フロントエンドが（再）読み込みされたので、今の状態を送り直してほしい
     resync: AtomicBool,
+    /// トレイで「表示」になっているか（毎回 is_visible() を問い合わせないためのキャッシュ）
+    visible: AtomicBool,
+    geometry: Mutex<Option<Geometry>>,
     store: Store,
+}
+
+impl Shared {
+    pub(crate) fn geometry(&self) -> Option<Geometry> {
+        *self.geometry.lock().unwrap()
+    }
+
+    pub(crate) fn set_geometry(&self, geometry: Geometry) {
+        *self.geometry.lock().unwrap() = Some(geometry);
+    }
 }
 
 /// フロントエンドへ送るカーソル座標（ウィンドウ左上基準の論理ピクセル）
@@ -41,6 +74,24 @@ pub(crate) struct Shared {
 struct CursorPayload {
     x: f64,
     y: f64,
+}
+
+/// フロントエンドに関係する設定
+#[derive(Clone, Serialize)]
+struct SettingsPayload {
+    chatty: bool,
+    character: &'static str,
+}
+
+pub(crate) fn emit_settings(window: &WebviewWindow, shared: &Shared) {
+    let settings = shared.store.get();
+    let _ = window.emit(
+        "mascot-settings",
+        SettingsPayload {
+            chatty: settings.chatty,
+            character: settings.character.name(),
+        },
+    );
 }
 
 /// TypeScript 側から呼ばれ、クリックスルーの ON/OFF を切り替える
@@ -59,38 +110,48 @@ fn set_click_through(
 /// フロントエンドがイベントを受け取れるようになったら呼ばれる。
 /// それより前に送った通知は届いていないので、状態を送り直す
 #[tauri::command]
-fn frontend_ready(shared: State<Arc<Shared>>) {
+fn frontend_ready(window: WebviewWindow, shared: State<Arc<Shared>>) {
     shared.resync.store(true, Ordering::Relaxed);
+    emit_settings(&window, &shared);
 }
 
 /// クリックスルー中は WebView にマウスイベントが届かないため、
-/// グローバルなカーソル位置をポーリングしてフロントエンドへ通知する
-fn spawn_cursor_watcher(app: AppHandle) {
+/// グローバルなカーソル位置をポーリングしてフロントエンドへ通知する。
+/// カーソルが遠い間は間隔を延ばし、通知もしない（遠ざかった時に 1 度だけ送る）
+fn spawn_cursor_watcher(app: AppHandle, shared: Arc<Shared>) {
     thread::spawn(move || {
         let mut last: Option<CursorPayload> = None;
+        let mut near = false;
         loop {
-            thread::sleep(CURSOR_POLL_INTERVAL);
-            let Some(window) = app.get_webview_window(MAIN_WINDOW) else {
-                continue;
-            };
-            if !window.is_visible().unwrap_or(false) {
+            thread::sleep(if near {
+                CURSOR_POLL_NEAR
+            } else {
+                CURSOR_POLL_FAR
+            });
+            if !shared.visible.load(Ordering::Relaxed) {
                 continue;
             }
-            let (Ok(cursor), Ok(origin), Ok(scale)) = (
-                window.cursor_position(),
-                window.inner_position(),
-                window.scale_factor(),
-            ) else {
+            let (Some(window), Some(geometry)) =
+                (app.get_webview_window(MAIN_WINDOW), shared.geometry())
+            else {
                 continue;
             };
-            let payload = CursorPayload {
-                x: (cursor.x - origin.x as f64) / scale,
-                y: (cursor.y - origin.y as f64) / scale,
+            let Ok(cursor) = window.cursor_position() else {
+                continue;
             };
-            if last != Some(payload) {
+            let rect = geometry.rect;
+            let payload = CursorPayload {
+                x: cursor.x / geometry.scale_factor - rect.x,
+                y: cursor.y / geometry.scale_factor - rect.y,
+            };
+            let (cx, cy) = (rect.w / 2.0, rect.h / 2.0);
+            let now_near =
+                (payload.x - cx).hypot(payload.y - cy) < rect.w.max(rect.h) * CURSOR_NEAR_RANGE;
+            if (now_near || near) && last != Some(payload) {
                 last = Some(payload);
                 let _ = window.emit("cursor-moved", payload);
             }
+            near = now_near;
         }
     });
 }
@@ -122,11 +183,12 @@ fn restore(window: &WebviewWindow, shared: &Shared) {
     geometry::resize_window(window, w, h);
     if let Some((x, y)) = settings.position {
         // 前回の位置がもう存在しない画面なら使わない（bring_back_if_lost が戻す）
-        if geometry::is_on_screen(window, geometry::Rect::new(x, y, w, h)) {
+        if geometry::is_on_screen(window, Rect::new(x, y, w, h)) {
             geometry::move_window(window, x, y);
         }
     }
     geometry::bring_back_if_lost(window);
+    shared.visible.store(settings.visible, Ordering::Relaxed);
     if !settings.visible {
         let _ = window.hide();
     }
@@ -150,6 +212,8 @@ pub fn run() {
                 hovering: AtomicBool::new(false),
                 reset: AtomicBool::new(false),
                 resync: AtomicBool::new(false),
+                visible: AtomicBool::new(true),
+                geometry: Mutex::new(None),
                 store: Store::load(path),
             });
             app.manage(shared.clone());
@@ -163,7 +227,7 @@ pub fn run() {
             window.set_visible_on_all_workspaces(true)?;
             restore(&window, &shared);
 
-            spawn_cursor_watcher(app.handle().clone());
+            spawn_cursor_watcher(app.handle().clone(), shared.clone());
             wander::spawn(app.handle().clone(), shared);
             Ok(())
         })

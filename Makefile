@@ -3,6 +3,8 @@
 #   make app   リリースビルドの .app を作成
 #   make dmg   配布用の .dmg を作成（.app も残る）
 #   make icon  scripts/gen-icon.mjs からアプリアイコンを作り直す
+#   make test  テストを実行（フロントエンド + Rust）
+#   make check CI と同じ確認（型チェック・テスト・fmt・clippy）
 
 BUNDLE_DIR := src-tauri/target/release/bundle
 ICON_SRC := src-tauri/icons/source.svg
@@ -11,13 +13,15 @@ ICON_TMP := .icon-build
 # macOS 版で使うアイコンだけを src-tauri/icons にコピーする
 ICON_FILES := 32x32.png 128x128.png 128x128@2x.png icon.icns icon.ico icon.png
 
-.PHONY: help dev app dmg icon clean
+.PHONY: help dev app dmg icon test check clean
 
 help:
 	@echo "make dev   開発モードで起動"
 	@echo "make app   .app を作成 ($(BUNDLE_DIR)/macos)"
 	@echo "make dmg   .dmg を作成 ($(BUNDLE_DIR)/dmg)"
 	@echo "make icon  アプリアイコンを作り直す"
+	@echo "make test  テストを実行"
+	@echo "make check CI と同じ確認を実行"
 	@echo "make clean ビルド成果物を削除"
 
 node_modules: package.json package-lock.json
@@ -42,6 +46,15 @@ icon: node_modules
 	npx tauri icon $(ICON_SRC) -o $(ICON_TMP)
 	cd $(ICON_TMP) && cp $(ICON_FILES) ../src-tauri/icons/
 	rm -rf $(ICON_TMP)
+
+test: node_modules
+	npm test
+	cd src-tauri && cargo test
+
+check: node_modules
+	npm run build
+	npm test
+	cd src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 
 clean:
 	rm -rf dist $(BUNDLE_DIR)

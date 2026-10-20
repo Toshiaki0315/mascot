@@ -1,6 +1,6 @@
 //! メニューバーのトレイアイコンと設定メニュー
 
-use std::sync::Arc;
+use std::sync::{atomic::Ordering, Arc};
 
 use tauri::{
     image::Image,
@@ -11,8 +11,8 @@ use tauri::{
 use tauri_plugin_autostart::ManagerExt;
 
 use crate::{
-    apply_scale, save_current_position,
-    settings::{Speed, SCALES},
+    apply_scale, emit_settings, save_current_position,
+    settings::{Character, Speed, SCALES},
     Shared, MAIN_WINDOW,
 };
 
@@ -21,7 +21,9 @@ struct TrayItems {
     walking: CheckMenuItem<Wry>,
     speeds: Vec<(Speed, CheckMenuItem<Wry>)>,
     scales: Vec<(f64, CheckMenuItem<Wry>)>,
+    characters: Vec<(Character, CheckMenuItem<Wry>)>,
     fullscreen: CheckMenuItem<Wry>,
+    chatty: CheckMenuItem<Wry>,
     autostart: CheckMenuItem<Wry>,
 }
 
@@ -91,6 +93,38 @@ pub fn setup(app: &tauri::App, shared: &Arc<Shared>) -> tauri::Result<()> {
             .collect::<Vec<_>>(),
     )?;
 
+    let characters = Character::ALL
+        .iter()
+        .map(|&character| {
+            CheckMenuItem::with_id(
+                app,
+                character.id(),
+                character.label(),
+                true,
+                settings.character == character,
+                None::<&str>,
+            )
+            .map(|item| (character, item))
+        })
+        .collect::<tauri::Result<Vec<_>>>()?;
+    let character_menu = Submenu::with_items(
+        app,
+        "キャラクター",
+        true,
+        &characters
+            .iter()
+            .map(|(_, item)| item as &dyn tauri::menu::IsMenuItem<Wry>)
+            .collect::<Vec<_>>(),
+    )?;
+
+    let chatty = CheckMenuItem::with_id(
+        app,
+        "chatty",
+        "おしゃべり",
+        true,
+        settings.chatty,
+        None::<&str>,
+    )?;
     let fullscreen = CheckMenuItem::with_id(
         app,
         "hide-on-fullscreen",
@@ -114,9 +148,11 @@ pub fn setup(app: &tauri::App, shared: &Arc<Shared>) -> tauri::Result<()> {
         &[
             &toggle,
             &PredefinedMenuItem::separator(app)?,
+            &character_menu,
             &walking,
             &speed_menu,
             &scale_menu,
+            &chatty,
             &fullscreen,
             &PredefinedMenuItem::separator(app)?,
             &autostart,
@@ -129,7 +165,9 @@ pub fn setup(app: &tauri::App, shared: &Arc<Shared>) -> tauri::Result<()> {
         walking,
         speeds,
         scales,
+        characters,
         fullscreen,
+        chatty,
         autostart,
     });
 
@@ -161,11 +199,17 @@ fn on_menu(app: &AppHandle, id: &str) {
             } else {
                 window.hide()
             };
+            shared.visible.store(visible, Ordering::Relaxed);
             shared.store.update(|s| s.visible = visible);
         }
         "walking" => {
             let on = items.walking.is_checked().unwrap_or(true);
             shared.store.update(|s| s.walking = on);
+        }
+        "chatty" => {
+            let on = items.chatty.is_checked().unwrap_or(true);
+            shared.store.update(|s| s.chatty = on);
+            emit_settings(&window, &shared);
         }
         "hide-on-fullscreen" => {
             let on = items.fullscreen.is_checked().unwrap_or(true);
@@ -191,8 +235,14 @@ fn on_menu(app: &AppHandle, id: &str) {
             app.exit(0);
         }
         _ => {
-            // 速さ・大きさはラジオボタンのように 1 つだけチェックする
-            if let Some(&(speed, _)) = items.speeds.iter().find(|(s, _)| s.id() == id) {
+            // 速さ・大きさ・キャラクターはラジオボタンのように 1 つだけチェックする
+            if let Some(&(character, _)) = items.characters.iter().find(|(c, _)| c.id() == id) {
+                for (c, item) in &items.characters {
+                    let _ = item.set_checked(*c == character);
+                }
+                shared.store.update(|s| s.character = character);
+                emit_settings(&window, &shared);
+            } else if let Some(&(speed, _)) = items.speeds.iter().find(|(s, _)| s.id() == id) {
                 for (s, item) in &items.speeds {
                     let _ = item.set_checked(*s == speed);
                 }

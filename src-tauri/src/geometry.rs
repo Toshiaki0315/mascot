@@ -119,3 +119,30 @@ pub fn bring_back_if_lost(window: &WebviewWindow) -> Option<(f64, f64)> {
     move_window(window, x, y);
     Some((x, y))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn contains_and_center() {
+        let r = Rect::new(10.0, 20.0, 100.0, 50.0);
+        assert_eq!(r.center(), (60.0, 45.0));
+        assert!(r.contains((10.0, 20.0)));
+        assert!(!r.contains((110.0, 20.0)));
+    }
+
+    #[test]
+    fn intersects() {
+        let a = Rect::new(0.0, 0.0, 100.0, 100.0);
+        assert!(a.intersects(&Rect::new(50.0, 50.0, 100.0, 100.0)));
+        assert!(!a.intersects(&Rect::new(100.0, 0.0, 10.0, 10.0)));
+    }
+
+    #[test]
+    fn covers_allows_one_point_error() {
+        let screen = Rect::new(0.0, 0.0, 1800.0, 1169.0);
+        assert!(Rect::new(0.5, 0.0, 1799.0, 1169.0).covers(&screen));
+        assert!(!Rect::new(0.0, 39.0, 1800.0, 1130.0).covers(&screen));
+    }
+}

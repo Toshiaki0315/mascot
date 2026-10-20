@@ -9,7 +9,11 @@
     "noEmit": true,
     "strict": true,
     "noUnusedLocals": true,
-    "noUnusedParameters": true
+    "noUnusedParameters": true,
+    // テストは Node の型の取り除きだけで実行するため、取り除けるだけの構文に限る
+    "erasableSyntaxOnly": true,
+    "allowImportingTsExtensions": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts"]
 }
