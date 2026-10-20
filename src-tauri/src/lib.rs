@@ -1,3 +1,4 @@
+mod about;
 mod geometry;
 mod physics;
 mod settings;

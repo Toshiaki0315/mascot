@@ -11,7 +11,7 @@ use tauri::{
 use tauri_plugin_autostart::ManagerExt;
 
 use crate::{
-    apply_scale, emit_settings, save_current_position,
+    about, apply_scale, emit_settings, save_current_position,
     settings::{Character, Speed, SCALES},
     Shared, MAIN_WINDOW,
 };
@@ -35,6 +35,13 @@ pub fn setup(app: &tauri::App, shared: &Arc<Shared>) -> tauri::Result<()> {
     let settings = shared.store.get();
     let autostart_enabled = app.autolaunch().is_enabled().unwrap_or(false);
 
+    let about = MenuItem::with_id(
+        app,
+        "about",
+        format!("{} について", app.package_info().name),
+        true,
+        None::<&str>,
+    )?;
     let toggle = MenuItem::with_id(app, "toggle", "表示 / 非表示", true, None::<&str>)?;
     let walking = CheckMenuItem::with_id(
         app,
@@ -146,6 +153,8 @@ pub fn setup(app: &tauri::App, shared: &Arc<Shared>) -> tauri::Result<()> {
     let menu = Menu::with_items(
         app,
         &[
+            &about,
+            &PredefinedMenuItem::separator(app)?,
             &toggle,
             &PredefinedMenuItem::separator(app)?,
             &character_menu,
@@ -192,6 +201,10 @@ fn on_menu(app: &AppHandle, id: &str) {
     };
 
     match id {
+        "about" => {
+            let info = app.package_info();
+            about::show(&info.name, &info.version.to_string());
+        }
         "toggle" => {
             let visible = !window.is_visible().unwrap_or(false);
             let _ = if visible {
