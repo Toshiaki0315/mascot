@@ -14,12 +14,19 @@ Tauri v2 (Rust + TypeScript) を使用した macOS 向けデスクトップマ�
    npm install
    ```
 
-## 開発の仕方
-開発モードで起動するには、以下のコマンドを実行します。
-```bash
-npm run tauri dev
-```
-※ 初回起動時はRustのコンパイルが行われるため、数分程度時間がかかります。
+## コマンド
+よく使う操作は `make` で実行できます（`npm install` が済んでいなければ自動で実行されます）。
+
+| コマンド | 内容 | 出力先 |
+| --- | --- | --- |
+| `make dev` | 開発モードで起動（ホットリロード） | — |
+| `make app` | リリースビルドの `.app` を作成 | `src-tauri/target/release/bundle/macos/` |
+| `make dmg` | 配布用の `.dmg` を作成（`.app` も残る） | `src-tauri/target/release/bundle/dmg/` |
+| `make icon` | `scripts/gen-icon.mjs` からアプリアイコンを作り直す | `src-tauri/icons/` |
+| `make clean` | ビルド成果物を削除 | — |
+
+※ 初回はRustのコンパイルが行われるため、数分程度時間がかかります。
+※ 作成した `.app` / `.dmg` はコード署名していないため、他の Mac で開くと Gatekeeper の警告が出ます。右クリック →「開く」で起動できます。
 
 ## アプリの使い方
 *   アプリを起動すると、デスクトップ上にドット絵のマスコットが表示されます。Dock には表示されません。
@@ -37,6 +44,7 @@ npm run tauri dev
 
 ## カスタマイズ
 *   **見た目**: [src/sprite.ts](src/sprite.ts) に 16×16 のドット絵を文字列で定義しています。文字を書き換えるとキャラクターが変わります。色は [src/styles.css](src/styles.css) の `.px-*` で指定しています。
+*   **アプリアイコン**: [scripts/gen-icon.mjs](scripts/gen-icon.mjs) のドット絵と色を書き換えて `make icon` を実行すると、全サイズのアイコンが作り直されます。
 *   **歩く速さ・休む時間**: [src-tauri/src/lib.rs](src-tauri/src/lib.rs) 先頭の `WALK_SPEED`（論理ピクセル/秒）、`IDLE_MIN_MS` / `IDLE_MAX_MS`（ミリ秒）で調整できます。
 
 ## 仕組み
@@ -45,7 +53,9 @@ npm run tauri dev
 
 ## プロジェクト構成
 ```
+├── Makefile                # make dev / app / dmg / icon
 ├── index.html              # キャラクターを描く SVG の入れ物
+├── scripts/gen-icon.mjs    # アプリアイコン（ドット絵）の生成スクリプト
 ├── src/
 │   ├── main.ts             # ホバー判定、クリック・ダブルクリック・ドラッグの処理
 │   ├── sprite.ts           # ドット絵の定義と SVG への描画
@@ -56,8 +66,3 @@ npm run tauri dev
     └── src/lib.rs          # トレイ、クリックスルー、カーソル監視、ランダム移動
 ```
 
-## ビルド
-リリースビルドを作成するには以下のコマンドを実行します。
-```bash
-npm run tauri build
-```
