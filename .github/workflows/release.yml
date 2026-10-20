@@ -1,10 +1,20 @@
 # v で始まるタグを push すると、dmg をビルドして GitHub のリリースに添付する。
-# リリースがまだなければ自動生成のリリースノートで作り、すでにあれば dmg だけを追加する
+# リリースがまだなければ自動生成のリリースノートで作り、すでにあれば dmg だけを追加する。
+#
+# Actions の画面から手動でも実行できる（workflow_dispatch）。
+#   - tag を空にすると、ビルドだけして dmg を Actions の成果物に置く（試しにビルドしたい時）
+#   - tag を指定すると、そのタグのコードでビルドし直して、リリースの dmg を差し替える
 name: Release
 
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "dmg を作り直して差し替えるリリースのタグ（例: v0.5.0）。空ならビルドだけ"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -13,14 +23,20 @@ jobs:
   release:
     # Apple Silicon のランナー
     runs-on: macos-latest
+    env:
+      # タグの push ならそのタグ、手動実行なら入力されたタグ（空ならリリースしない）
+      TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.TAG || github.ref }}
 
       - name: タグとアプリのバージョンが一致しているか確認
+        if: env.TAG != ''
         run: |
           version=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
-            echo "::error::tauri.conf.json の version (v$version) とタグ ($GITHUB_REF_NAME) が一致しません"
+          if [ "v$version" != "$TAG" ]; then
+            echo "::error::tauri.conf.json の version (v$version) とタグ ($TAG) が一致しません"
             exit 1
           fi
 
@@ -37,19 +53,38 @@ jobs:
 
       - run: npm ci
 
-      - run: npm run tauri build -- --bundles dmg
-
-      - name: リリースに dmg を添付
+      - name: dmg をビルド
+        # Tauri は CI=true の環境では、Finder でアイコンの大きさや並びを整える処理を飛ばす。
+        # 手元でビルドした dmg と同じ見た目にするため、飛ばさないようにする
         env:
-          GH_TOKEN: ${{ github.token }}
+          TAURI_BUNDLER_DMG_IGNORE_CI: "true"
+        run: npm run tauri build -- --bundles dmg
+
+      - name: dmg の名前をそろえる
+        id: dmg
         run: |
-          version=${GITHUB_REF_NAME#v}
+          version=$(node -p "require('./src-tauri/tauri.conf.json').version")
           # ファイル名の空白は GitHub で "." に置き換わるので、ハイフンにしておく
           asset="Desktop-Mascot_${version}_aarch64.dmg"
           cp "src-tauri/target/release/bundle/dmg/Desktop Mascot_${version}_aarch64.dmg" "$asset"
           shasum -a 256 "$asset"
-          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" "$asset" --clobber
+          echo "asset=$asset" >> "$GITHUB_OUTPUT"
+
+      - name: 成果物として置く（ビルドだけの時）
+        if: env.TAG == ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: dmg
+          path: ${{ steps.dmg.outputs.asset }}
+
+      - name: リリースに dmg を添付
+        if: env.TAG != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASSET: ${{ steps.dmg.outputs.asset }}
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" "$ASSET" --clobber
           else
-            gh release create "$GITHUB_REF_NAME" "$asset" --title "$GITHUB_REF_NAME" --generate-notes
+            gh release create "$TAG" "$ASSET" --title "$TAG" --generate-notes
           fi
