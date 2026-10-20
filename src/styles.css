@@ -9,6 +9,8 @@ body {
   -webkit-user-select: none;
 }
 
+/* 大きさ（1 倍・2 倍）はウィンドウサイズで決まるので、寸法はすべてウィンドウ比で指定する。
+   等倍（148×158）のとき、キャラクターは 16 ドット × 7px = 112px */
 #stage {
   width: 100%;
   height: 100%;
@@ -16,16 +18,21 @@ body {
   align-items: flex-end;
   justify-content: center;
   box-sizing: border-box;
-  padding-bottom: 14px;
+  padding-bottom: calc(100vh * 14 / 158);
 }
 
-/* 16 ドット × 7px。ジャンプ（2 ドット）とハートの浮き上がり（2 ドット）が
+/* ジャンプ（2 ドット）とハートの浮き上がり（2 ドット）、寝息の Z が
    はみ出さないよう、ウィンドウ上部に 4 ドット以上の余白を残している。
    回転中は耳が横や下へはみ出すので、左右と下にも余白を取っている */
 #mascot {
-  width: 112px;
-  height: 112px;
+  width: calc(100vw * 112 / 148);
+  height: calc(100vw * 112 / 148);
   overflow: visible;
+}
+
+/* 全画面アプリの上では姿を消す */
+#mascot.suppressed {
+  visibility: hidden;
 }
 
 /* 当たり判定は .hit のドット（キャラクター本体）だけにする */
@@ -41,14 +48,8 @@ body {
 .px-E { fill: #3b2a1a; }
 .px-P { fill: #ff9a9a; }
 .px-H { fill: #ff4f7a; }
+.px-Z { fill: #4a5a9a; }
 .px-S { fill: rgba(0, 0, 0, 0.2); }
-
-#mascot-body {
-  transform-origin: 8px 8px;
-}
-#mascot.facing-left #mascot-body {
-  transform: scaleX(-1);
-}
 
 /* ドット絵らしく、動きはすべて 1 ドット単位のコマ送りにする */
 .bounce {
@@ -59,6 +60,14 @@ body {
 }
 #mascot.hover .px-P {
   fill: #ff6f8a;
+}
+
+/* 視線：カーソルの方や進む方へ目を 1 ドット寄せる */
+#mascot.look-left .eyes {
+  transform: translateX(-1px);
+}
+#mascot.look-right .eyes {
+  transform: translateX(1px);
 }
 
 /* まばたき：目の上半分を体の色で塗りつぶす */
@@ -80,6 +89,65 @@ body {
   animation: bounce 0.4s steps(1) infinite;
 }
 
+/* 表情の部品は普段は隠しておく */
+.face-happy,
+.face-sleep,
+.face-yawn,
+.heart,
+.zzz {
+  display: none;
+}
+
+/* クリックされたら喜ぶ：2 回ジャンプ + ^^ の顔 + ハート */
+#mascot.happy .face-happy,
+#mascot.happy .heart {
+  display: inline;
+}
+#mascot.happy .bounce {
+  animation: jump 0.5s steps(1) 2;
+}
+#mascot.happy .heart {
+  animation: heart 1s steps(1) 1 forwards;
+}
+#mascot.happy .eye-top {
+  animation: none;
+}
+
+/* ダブルクリックで 1 回転。45° ずつのコマ送りにしてドット絵らしくする */
+.spin {
+  transform-origin: 8px 7.5px;
+}
+#mascot.spinning .spin {
+  animation: spin 0.8s steps(8) 1;
+}
+
+/* しばらく入力がないと眠る：目を閉じて、ゆっくり呼吸しながら Z を出す */
+#mascot.sleeping .face-sleep,
+#mascot.sleeping .zzz {
+  display: inline;
+}
+#mascot.sleeping .bounce {
+  animation: bounce 2.4s steps(1) infinite;
+}
+#mascot.sleeping .z-small {
+  animation: frame-a 2.4s steps(1) infinite;
+}
+#mascot.sleeping .z-large {
+  animation: frame-b 2.4s steps(1) infinite;
+}
+
+/* 休憩中のしぐさ：あくびと伸び */
+#mascot.yawn .face-yawn {
+  display: inline;
+}
+#mascot.yawn .bounce {
+  animation: none;
+}
+#mascot.stretch .bounce {
+  transform-origin: 8px 15px;
+  animation: stretch 1.4s steps(1) 1;
+}
+
 @keyframes bounce {
   0% { transform: translateY(0); }
   50% { transform: translateY(-1px); }
@@ -96,25 +164,6 @@ body {
   0% { visibility: hidden; }
   50% { visibility: visible; }
 }
-
-/* クリックされたら喜ぶ：2 回ジャンプ + ^^ の顔 + ハート */
-.face-happy,
-.heart {
-  display: none;
-}
-#mascot.happy .face-happy,
-#mascot.happy .heart {
-  display: inline;
-}
-#mascot.happy .bounce {
-  animation: jump 0.5s steps(1) 2;
-}
-#mascot.happy .heart {
-  animation: heart 1s steps(1) 1 forwards;
-}
-#mascot.happy .eye-top {
-  animation: none;
-}
 @keyframes jump {
   0% { transform: translateY(0); }
   20% { transform: translateY(-1px); }
@@ -128,15 +177,14 @@ body {
   60% { transform: translateY(-2px); }
   90% { visibility: hidden; }
 }
-
-/* ダブルクリックで 1 回転。45° ずつのコマ送りにしてドット絵らしくする */
-.spin {
-  transform-origin: 8px 7.5px;
-}
-#mascot.spinning .spin {
-  animation: spin 0.8s steps(8) 1;
-}
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+@keyframes stretch {
+  0% { transform: scale(1, 1); }
+  15% { transform: scale(1.06, 0.88); }
+  35% { transform: scale(0.94, 1.12); }
+  75% { transform: scale(1, 1.06); }
+  90% { transform: scale(1, 1); }
 }

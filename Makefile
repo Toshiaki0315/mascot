@@ -6,6 +6,7 @@
 
 BUNDLE_DIR := src-tauri/target/release/bundle
 ICON_SRC := src-tauri/icons/source.svg
+TRAY_ICON := src-tauri/icons/tray-icon.png
 ICON_TMP := .icon-build
 # macOS 版で使うアイコンだけを src-tauri/icons にコピーする
 ICON_FILES := 32x32.png 128x128.png 128x128@2x.png icon.icns icon.ico icon.png
@@ -36,7 +37,7 @@ dmg: node_modules
 	@echo "作成しました: $(BUNDLE_DIR)/dmg/"
 
 icon: node_modules
-	node scripts/gen-icon.mjs $(ICON_SRC)
+	node scripts/gen-icon.mjs $(ICON_SRC) $(TRAY_ICON)
 	rm -rf $(ICON_TMP)
 	npx tauri icon $(ICON_SRC) -o $(ICON_TMP)
 	cd $(ICON_TMP) && cp $(ICON_FILES) ../src-tauri/icons/
