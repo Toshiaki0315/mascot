@@ -69,7 +69,7 @@ impl Character {
             Character::Shiro => "白ネコ",
             Character::Mike => "三毛ネコ",
             Character::Inu => "いぬ",
-            Character::Kuranyan => "くらにゃん",
+            Character::Kuranyan => "くらにゃんぽい",
         }
     }
 
