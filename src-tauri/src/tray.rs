@@ -11,7 +11,7 @@ use tauri::{
 use tauri_plugin_autostart::ManagerExt;
 
 use crate::{
-    about, apply_scale, reminder, emit_settings, save_current_position,
+    about, apply_scale, emit_settings, reminder, save_current_position,
     settings::{Character, Speed, SCALES},
     Shared, MAIN_WINDOW,
 };
@@ -25,6 +25,7 @@ struct TrayItems {
     fullscreen: CheckMenuItem<Wry>,
     chatty: CheckMenuItem<Wry>,
     autostart: CheckMenuItem<Wry>,
+    reminder_sound: CheckMenuItem<Wry>,
     /// トレイと、マスコットの右クリックで共有する
     menu: Menu<Wry>,
 }
@@ -135,6 +136,14 @@ pub fn setup(app: &tauri::App, shared: &Arc<Shared>) -> tauri::Result<()> {
         settings.chatty,
         None::<&str>,
     )?;
+    let reminder_sound = CheckMenuItem::with_id(
+        app,
+        "reminder-sound",
+        "リマインダーの音",
+        true,
+        settings.reminder_sound,
+        None::<&str>,
+    )?;
     let fullscreen = CheckMenuItem::with_id(
         app,
         "hide-on-fullscreen",
@@ -166,6 +175,7 @@ pub fn setup(app: &tauri::App, shared: &Arc<Shared>) -> tauri::Result<()> {
             &speed_menu,
             &scale_menu,
             &chatty,
+            &reminder_sound,
             &fullscreen,
             &PredefinedMenuItem::separator(app)?,
             &autostart,
@@ -182,6 +192,7 @@ pub fn setup(app: &tauri::App, shared: &Arc<Shared>) -> tauri::Result<()> {
         fullscreen,
         chatty,
         autostart,
+        reminder_sound,
         menu: menu.clone(),
     });
 
@@ -235,6 +246,10 @@ fn on_menu(app: &AppHandle, id: &str) {
             let on = items.chatty.is_checked().unwrap_or(true);
             shared.store.update(|s| s.chatty = on);
             emit_settings(&window, &shared);
+        }
+        "reminder-sound" => {
+            let on = items.reminder_sound.is_checked().unwrap_or(true);
+            shared.store.update(|s| s.reminder_sound = on);
         }
         "hide-on-fullscreen" => {
             let on = items.fullscreen.is_checked().unwrap_or(true);

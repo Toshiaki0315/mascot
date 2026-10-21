@@ -233,6 +233,7 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             show_existing(app);
         }))
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
             None,
@@ -244,6 +245,8 @@ pub fn run() {
             show_context_menu,
             reminder::list_reminders,
             reminder::add_reminder,
+            reminder::snooze_reminder,
+            reminder::notify_reminder,
             reminder::delete_reminder
         ])
         .setup(|app| {

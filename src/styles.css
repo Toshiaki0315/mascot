@@ -267,16 +267,36 @@ body {
 #bubble.reminder {
   max-width: calc(var(--u) * 140);
   padding: calc(var(--u) * 5) calc(var(--u) * 8);
-  font-size: calc(var(--u) * 15);
+  font-size: calc(var(--u) * 12);
   font-weight: 700;
   border-color: #d9692a;
   background: #fff3e0;
 }
 #bubble.reminder.r-lg {
-  font-size: calc(var(--u) * 24);
+  font-size: calc(var(--u) * 22);
 }
 #bubble.reminder.r-md {
-  font-size: calc(var(--u) * 19);
+  font-size: calc(var(--u) * 17);
+}
+/* 文字の下の「あとで」「閉じる」 */
+#bubble.reminder .actions {
+  display: flex;
+  justify-content: center;
+  gap: calc(var(--u) * 6);
+  margin-top: calc(var(--u) * 3);
+  font-size: calc(var(--u) * 9);
+  font-weight: 600;
+  color: #8a5a2a;
+}
+#bubble.reminder .action {
+  white-space: nowrap;
+  padding: calc(var(--u) * 1) calc(var(--u) * 4);
+  border: calc(var(--u) * 1) solid #d9692a;
+  background: #fffdf6;
+}
+#bubble.reminder .action:hover {
+  background: #d9692a;
+  color: #fff;
 }
 #bubble.reminder.show {
   pointer-events: auto;

@@ -8,14 +8,21 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_notification::NotificationExt;
 
 use crate::{about, Shared, MAIN_WINDOW};
 
 pub const WINDOW: &str = "reminders";
 /// 時刻になったかを調べる間隔
 const CHECK_INTERVAL: Duration = Duration::from_secs(5);
-/// ふきだしに収まる文字数
-pub const MAX_TEXT_CHARS: usize = 30;
+/// 登録できる内容の長さ。ふきだしには収まらないぶんは省き、全文は通知センターに出す
+pub const MAX_TEXT_CHARS: usize = 100;
+/// ふきだしに出せる文字数（これを超えたら通知センターにも出す。src/speech.ts の BUBBLE_CHARS と同じ）
+const BUBBLE_CHARS: usize = 30;
+/// 「あとで知らせる」で、もう一度知らせるまでの時間
+const SNOOZE_MS: i64 = 5 * 60 * 1000;
+/// 鳴らす音（macOS 標準）
+const SOUND_FILE: &str = "/System/Library/Sounds/Glass.aiff";
 /// 登録できる件数
 const MAX_REMINDERS: usize = 100;
 
@@ -120,20 +127,52 @@ pub fn add_reminder(
     result
 }
 
+/// 「あとで知らせる」：同じ内容を、5 分後に 1 回だけ知らせる
+#[tauri::command]
+pub fn snooze_reminder(shared: State<Arc<Shared>>, text: String) {
+    shared.store.update(|s| {
+        let id = s.reminders.iter().map(|r| r.id).max().unwrap_or(0) + 1;
+        s.reminders.push(Reminder {
+            id,
+            text,
+            at: now_ms() + SNOOZE_MS,
+            repeat: Repeat::Once,
+        });
+    });
+}
+
+/// マスコットが見えない間（全画面アプリの上など）に、フロントエンドから呼ばれる
+#[tauri::command]
+pub fn notify_reminder(app: AppHandle, text: String) {
+    notify(&app, &text);
+}
+
 #[tauri::command]
 pub fn delete_reminder(shared: State<Arc<Shared>>, id: u64) -> Vec<Reminder> {
     shared.store.update(|s| s.reminders.retain(|r| r.id != id));
     sorted(shared.store.get().reminders)
 }
 
+/// macOS の通知センターに出す
+fn notify(app: &AppHandle, text: &str) {
+    let _ = app
+        .notification()
+        .builder()
+        .title("リマインダー")
+        .body(text)
+        .show();
+}
+
+/// 音を鳴らす（待たずに戻る）
+fn play_sound() {
+    let _ = std::process::Command::new("afplay").arg(SOUND_FILE).spawn();
+}
+
 /// 時刻になったリマインダーをマスコットのふきだしへ送る。
-/// マスコットを非表示にしている間は送らず、表示に戻ったときに知らせる
+/// マスコットを非表示にしている間と、ふきだしに収まらない長い内容は、通知センターにも出す
 pub fn spawn_scheduler(app: AppHandle, shared: Arc<Shared>) {
     thread::spawn(move || loop {
         thread::sleep(CHECK_INTERVAL);
-        if !shared.visible.load(Ordering::Relaxed) {
-            continue;
-        }
         let now = now_ms();
         if !shared.store.get().reminders.iter().any(|r| r.at <= now) {
             continue;
@@ -145,8 +184,17 @@ pub fn spawn_scheduler(app: AppHandle, shared: Arc<Shared>) {
         let Some(window) = app.get_webview_window(MAIN_WINDOW) else {
             continue;
         };
+        if shared.store.get().reminder_sound {
+            play_sound();
+        }
+        let visible = shared.visible.load(Ordering::Relaxed);
         for r in fired {
-            let _ = window.emit("mascot-reminder", r.text);
+            if !visible || r.text.chars().count() > BUBBLE_CHARS {
+                notify(&app, &r.text);
+            }
+            if visible {
+                let _ = window.emit("mascot-reminder", r.text);
+            }
         }
     });
 }

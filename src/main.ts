@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Bubble, hourLine, lineFor, type Occasion } from "./speech";
+import { Bubble, hourLine, lineFor, truncateForBubble, type Occasion } from "./speech";
 import { CHARACTERS, renderSprite, type Character } from "./sprite";
 
 type CursorPayload = { x: number; y: number };
@@ -12,6 +12,8 @@ type SayPayload = { kind: "break" };
 
 /// 時刻になったリマインダー（表示待ちの列）
 const pendingReminders: string[] = [];
+/// いまふきだしに出しているリマインダーの全文（「あとで」を押したときに使う）
+let currentReminder = "";
 
 const stage = document.querySelector<HTMLElement>("#stage")!;
 const mascot = document.querySelector<SVGSVGElement>("#mascot")!;
@@ -40,8 +42,17 @@ function showNextReminder() {
   if (suppressed || bubble.isPinned) return;
   const text = pendingReminders.shift();
   if (text === undefined) return;
+  currentReminder = text;
   rejoice();
-  bubble.remind(text);
+  bubble.remind(truncateForBubble(text));
+}
+
+// ふきだしを閉じて、次のリマインダーがあれば出す。snooze なら 5 分後にもう一度知らせる
+function closeReminder(snooze: boolean) {
+  if (!bubble.isPinned) return;
+  if (snooze) void invoke("snooze_reminder", { text: currentReminder });
+  bubble.dismiss();
+  showNextReminder();
 }
 
 // 指定座標（ウィンドウ内の CSS ピクセル）がキャラクターの不透明部分か
@@ -60,7 +71,7 @@ function isMascotHit(el: Element | null): boolean {
 
 // リマインダーのふきだしの上か（クリックして閉じられる）
 function isReminderBubble(el: Element | null): boolean {
-  return el instanceof HTMLElement && el.id === "bubble" && el.classList.contains("reminder");
+  return el instanceof HTMLElement && el.closest("#bubble.reminder") !== null;
 }
 
 async function updateHover(x: number, y: number) {
@@ -193,8 +204,12 @@ await listen<FlagPayload>("mascot-sleep", (e) => {
 await listen<FlagPayload>("mascot-suppress", (e) => {
   suppressed = e.payload.on;
   stage.classList.toggle("suppressed", suppressed);
-  if (!suppressed) showNextReminder();
   if (suppressed) {
+    // 姿が見えなくなるので、出しかけのリマインダーは通知センターへ回す
+    for (const text of [bubble.isPinned ? currentReminder : null, ...pendingReminders.splice(0)]) {
+      if (text) void invoke("notify_reminder", { text });
+    }
+    bubble.dismiss();
     // Rust 側でクリックスルーに戻しているので、こちらの状態も合わせる
     overMascot = false;
     mascot.classList.remove("hover");
@@ -214,6 +229,11 @@ await listen<SettingsPayload>("mascot-settings", (e) => {
 });
 
 await listen<string>("mascot-reminder", (e) => {
+  // 全画面アプリの上などで姿が見えない間は、通知センターに出す
+  if (suppressed) {
+    void invoke("notify_reminder", { text: e.payload });
+    return;
+  }
   pendingReminders.push(e.payload);
   showNextReminder();
 });
@@ -260,10 +280,9 @@ function spin() {
 }
 
 // リマインダーのふきだしをクリックしたら消して、次のリマインダーがあれば出す
-bubbleEl.addEventListener("click", () => {
-  if (!bubble.isPinned) return;
-  bubble.dismiss();
-  showNextReminder();
+bubbleEl.addEventListener("click", (e) => {
+  const action = (e.target as HTMLElement).closest<HTMLElement>("[data-action]")?.dataset.action;
+  closeReminder(action === "snooze");
 });
 
 // 右クリックで、トレイと同じメニューをその場に出す
@@ -298,8 +317,7 @@ window.addEventListener("mouseup", (e) => {
     clearTimeout(clickTimer);
     if (bubble.isPinned) {
       // キャラクターをクリックしても、リマインダーを閉じられる
-      bubble.dismiss();
-      showNextReminder();
+      closeReminder(false);
     } else if (e.detail >= 2) {
       spin();
     } else {

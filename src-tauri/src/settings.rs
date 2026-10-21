@@ -109,6 +109,8 @@ pub struct Settings {
     pub chatty: bool,
     pub character: Character,
     pub reminders: Vec<Reminder>,
+    /// リマインダーの時刻に音を鳴らす
+    pub reminder_sound: bool,
 }
 
 impl Default for Settings {
@@ -123,6 +125,7 @@ impl Default for Settings {
             chatty: true,
             character: Character::Tora,
             reminders: Vec::new(),
+            reminder_sound: true,
         }
     }
 }

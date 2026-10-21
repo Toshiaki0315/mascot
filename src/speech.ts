@@ -52,6 +52,15 @@ export function hourLine(hour: number, character: Character): string {
 
 const SHOW_MS = 3500;
 
+/// ふきだしに出せるリマインダーの文字数。超えたぶんは「…」で省く
+/// （全文は Rust 側が通知センターに出す。reminder.rs の BUBBLE_CHARS と同じ値）
+export const BUBBLE_CHARS = 30;
+
+export function truncateForBubble(text: string): string {
+  const chars = [...text];
+  return chars.length <= BUBBLE_CHARS ? text : `${chars.slice(0, BUBBLE_CHARS - 1).join("")}…`;
+}
+
 /// リマインダーのふきだしは、クリックされるまで（または長く放置されるまで）出し続ける
 const REMIND_MS = 5 * 60_000;
 
@@ -75,18 +84,32 @@ export class Bubble {
     this.show(text, SHOW_MS);
   }
 
-  /// リマインダーを出す。ふつうのおしゃべりや hide() では消えない
+  /// リマインダーを出す。ふつうのおしゃべりや hide() では消えない。
+  /// 文字の下に「あとで」「閉じる」のボタンを付ける（押したかどうかは data-action で見分ける）
   remind(text: string) {
     this.pinned = true;
     // 短い文ほど大きな字で出す
     const length = [...text].length;
-    this.el.classList.remove("r-lg", "r-md");
+    this.el.classList.remove("r-lg", "r-md", "r-sm");
     this.el.classList.add("reminder", length <= 8 ? "r-lg" : length <= 16 ? "r-md" : "r-sm");
-    this.show(text, REMIND_MS);
+
+    const message = document.createElement("div");
+    message.textContent = text;
+    const actions = document.createElement("div");
+    actions.className = "actions";
+    for (const [action, label] of [["snooze", "5 分後"], ["close", "閉じる"]]) {
+      const button = document.createElement("span");
+      button.className = "action";
+      button.dataset.action = action;
+      button.textContent = label;
+      actions.append(button);
+    }
+    this.show([message, actions], REMIND_MS);
   }
 
-  private show(text: string, ms: number) {
-    this.el.textContent = text;
+  private show(content: string | HTMLElement[], ms: number) {
+    if (typeof content === "string") this.el.textContent = content;
+    else this.el.replaceChildren(...content);
     // 表示中に次のセリフが来たら、ポップのアニメーションからやり直す
     this.el.classList.remove("show");
     void this.el.offsetWidth;
