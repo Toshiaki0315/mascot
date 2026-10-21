@@ -747,7 +747,7 @@ dependencies = [
 
 [[package]]
 name = "desktop-mascot"
-version = "0.5.0"
+version = "0.5.5"
 dependencies = [
  "core-foundation",
  "objc2",
