@@ -1,6 +1,6 @@
 // 16×16 のドット絵スプライト
 //   . 透明  O 輪郭  B 体  D / K 模様（三毛の茶・黒、いぬの耳）  E 目  e 目の上半分（まばたきで消える）
-//   P ほっぺ  H ハート  Z 寝息の「Z」
+//   R 鼻・口・耳の内側（くらにゃん）  P ほっぺ  H ハート  Z 寝息の「Z」
 // 色はキャラクターごとに styles.css の CSS 変数で決まる。
 // 目・表情は体の上に重ねる部品にして、CSS で切り替える
 
@@ -61,17 +61,23 @@ const INU_BODY = [
 const KURANYAN_BODY = [
   "..OO........OO..",
   ".ODDO......OKKO.",
-  ".ODDDO....OKKKO.",
+  ".ODRDO....OKRKO.",
   ".ODDDDOOOOKKKKO.",
-  "OBDDDDBBBBBKKKBO",
-  "OBBDDBBBBBBBKKBO",
-  "OBBBBBBBBBBBBBBO",
-  "OBBBBBBBBBBBBBBO",
-  "OBPPBBBOOBBBPPBO",
-  "OBBBBBBBBBBBBBBO",
-  "OBBBBBBBBBBBBBBO",
+  ".ODDDDDBBBKKKKO.",
+  ".ODDDDBBBBBKKKO.",
+  ".OBDDBBBBBBBKKO.",
+  ".OBBBBBBBBBBBBO.",
+  "OOPPPBBBBBBPPPOO",
+  ".OPPPBBBBBBPPPO.",
+  "OOBBBBBBBBBBBBOO",
   ".OBBBBBBBBBBBBO.",
   "..OOBBBOOBBBOO..",
+];
+
+// くらにゃんの口（輪郭なしの赤い口）。表情の間は隠す
+const KURANYAN_MOUTH = [
+  "................",
+  "......RRRR......",
 ];
 
 const BODIES: Record<Character, string[]> = {
@@ -211,6 +217,7 @@ export function renderSprite(svg: SVGSVGElement, character: Character = "tora") 
   zzz.append(part("z-small", Z_SMALL, -2, false, 7), part("z-large", Z_LARGE, -3, false, 6));
   bounce.append(
     part("eyes", character === "kuranyan" ? KURANYAN_EYES : EYES, FACE_TOP),
+    ...(character === "kuranyan" ? [part("mouth", KURANYAN_MOUTH, 9)] : []),
     part("legs-a", LEGS_A, LEGS_TOP, true),
     part("legs-b", LEGS_B, LEGS_TOP, true),
     part("face-happy", HAPPY_FACE, FACE_TOP),
@@ -236,6 +243,7 @@ export function validateSprites(): string[] {
     ...BODIES,
     EYES,
     KURANYAN_EYES,
+    KURANYAN_MOUTH,
     LEGS_A,
     LEGS_B,
     HAPPY_FACE,

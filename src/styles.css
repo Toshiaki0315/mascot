@@ -93,6 +93,7 @@ body {
   --c-e: #141010;
   --c-p: #f0a08a;
   --c-p-hover: #ff7f6a;
+  --c-r: #e8806a;
 }
 
 .px-O { fill: var(--c-o); }
@@ -101,6 +102,7 @@ body {
 .px-K { fill: var(--c-k); }
 .px-E { fill: var(--c-e); }
 .px-P { fill: var(--c-p); }
+.px-R { fill: var(--c-r, #e8806a); }
 .px-H { fill: #ff4f7a; }
 .px-Z { fill: #4a5a9a; }
 .px-S { fill: rgba(0, 0, 0, 0.2); }
@@ -155,9 +157,13 @@ body {
 }
 /* visibility だと、まばたきのアニメーションが子に visible を付けて見えてしまうので display で消す */
 #mascot.happy .eyes,
+#mascot.happy .mouth,
 #mascot.sleeping .eyes,
+#mascot.sleeping .mouth,
 #mascot.yawn .eyes,
-#mascot.flying .eyes {
+#mascot.yawn .mouth,
+#mascot.flying .eyes,
+#mascot.flying .mouth {
   display: none;
 }
 
