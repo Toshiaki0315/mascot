@@ -4,14 +4,14 @@ use std::sync::{atomic::Ordering, Arc};
 
 use tauri::{
     image::Image,
-    menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu},
+    menu::{CheckMenuItem, ContextMenu, Menu, MenuItem, PredefinedMenuItem, Submenu},
     tray::TrayIconBuilder,
-    AppHandle, Manager, Wry,
+    AppHandle, Manager, WebviewWindow, Wry,
 };
 use tauri_plugin_autostart::ManagerExt;
 
 use crate::{
-    about, apply_scale, emit_settings, save_current_position,
+    about, apply_scale, reminder, emit_settings, save_current_position,
     settings::{Character, Speed, SCALES},
     Shared, MAIN_WINDOW,
 };
@@ -25,6 +25,8 @@ struct TrayItems {
     fullscreen: CheckMenuItem<Wry>,
     chatty: CheckMenuItem<Wry>,
     autostart: CheckMenuItem<Wry>,
+    /// トレイと、マスコットの右クリックで共有する
+    menu: Menu<Wry>,
 }
 
 fn scale_id(scale: f64) -> String {
@@ -43,6 +45,7 @@ pub fn setup(app: &tauri::App, shared: &Arc<Shared>) -> tauri::Result<()> {
         None::<&str>,
     )?;
     let toggle = MenuItem::with_id(app, "toggle", "表示 / 非表示", true, None::<&str>)?;
+    let reminders = MenuItem::with_id(app, "reminders", "リマインダー…", true, None::<&str>)?;
     let walking = CheckMenuItem::with_id(
         app,
         "walking",
@@ -156,6 +159,7 @@ pub fn setup(app: &tauri::App, shared: &Arc<Shared>) -> tauri::Result<()> {
             &about,
             &PredefinedMenuItem::separator(app)?,
             &toggle,
+            &reminders,
             &PredefinedMenuItem::separator(app)?,
             &character_menu,
             &walking,
@@ -178,6 +182,7 @@ pub fn setup(app: &tauri::App, shared: &Arc<Shared>) -> tauri::Result<()> {
         fullscreen,
         chatty,
         autostart,
+        menu: menu.clone(),
     });
 
     // 白黒のテンプレート画像にすると、ライト/ダークどちらのメニューバーにもなじむ
@@ -193,6 +198,12 @@ pub fn setup(app: &tauri::App, shared: &Arc<Shared>) -> tauri::Result<()> {
     Ok(())
 }
 
+/// マスコットの上に、トレイと同じメニューを出す
+pub fn popup(window: &WebviewWindow) {
+    let items = window.app_handle().state::<TrayItems>();
+    let _ = items.menu.popup(window.as_ref().window());
+}
+
 fn on_menu(app: &AppHandle, id: &str) {
     let shared = app.state::<Arc<Shared>>();
     let items = app.state::<TrayItems>();
@@ -205,6 +216,7 @@ fn on_menu(app: &AppHandle, id: &str) {
             let info = app.package_info();
             about::show(&info.name, &info.version.to_string());
         }
+        "reminders" => reminder::open_window(app),
         "toggle" => {
             let visible = !window.is_visible().unwrap_or(false);
             let _ = if visible {

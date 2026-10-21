@@ -262,6 +262,29 @@ body {
   visibility: visible;
   animation: pop 0.24s steps(2) 1;
 }
+/* リマインダー：大きめの字にする。短い文ほど大きく、長い文（30 文字）でもキャラクターの頭に少し
+   かかる程度に収める。クリックして閉じられるよう、ふきだしの上でもマウスを受け付ける */
+#bubble.reminder {
+  max-width: calc(var(--u) * 140);
+  padding: calc(var(--u) * 5) calc(var(--u) * 8);
+  font-size: calc(var(--u) * 15);
+  font-weight: 700;
+  border-color: #d9692a;
+  background: #fff3e0;
+}
+#bubble.reminder.r-lg {
+  font-size: calc(var(--u) * 24);
+}
+#bubble.reminder.r-md {
+  font-size: calc(var(--u) * 19);
+}
+#bubble.reminder.show {
+  pointer-events: auto;
+  cursor: pointer;
+}
+#bubble.reminder::after {
+  background: #d9692a;
+}
 /* しっぽ */
 #bubble::after {
   content: "";

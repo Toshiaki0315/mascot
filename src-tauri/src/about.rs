@@ -19,20 +19,29 @@ const ICON_PNG: &[u8] = include_bytes!("../icons/128x128@2x.png");
 /// ビルドしたコミット（build.rs が埋め込む）
 const BUILD: &str = env!("MASCOT_GIT_HASH");
 
-/// 情報パネルを開く。メインスレッド（メニューのイベント）から呼ぶこと
-pub fn show(name: &str, version: &str) {
+/// このアプリを前面に出す。メインスレッドから呼ぶこと。
+/// Dock に出ない常駐アプリは前面に出ていないので、そのままだとウィンドウがほかの窓の後ろに開く。
+/// macOS 14 以降は activate、それより前は activateIgnoringOtherApps で前面に出す
+pub fn activate_app() {
     let Some(mtm) = MainThreadMarker::new() else {
         return;
     };
     let app = NSApplication::sharedApplication(mtm);
-    // Dock に出ない常駐アプリは前面に出ていないので、そのままだとパネルがほかの窓の後ろに開く。
-    // macOS 14 以降は activate、それより前は activateIgnoringOtherApps で前面に出す
     if app.respondsToSelector(sel!(activate)) {
         app.activate();
     } else {
         #[allow(deprecated)]
         app.activateIgnoringOtherApps(true);
     }
+}
+
+/// 情報パネルを開く。メインスレッド（メニューのイベント）から呼ぶこと
+pub fn show(name: &str, version: &str) {
+    let Some(mtm) = MainThreadMarker::new() else {
+        return;
+    };
+    let app = NSApplication::sharedApplication(mtm);
+    activate_app();
 
     let name = NSString::from_str(name);
     let version = NSString::from_str(version);

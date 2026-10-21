@@ -10,9 +10,13 @@ type FlagPayload = { on: boolean };
 type SettingsPayload = { chatty: boolean; character: string };
 type SayPayload = { kind: "break" };
 
+/// 時刻になったリマインダー（表示待ちの列）
+const pendingReminders: string[] = [];
+
 const stage = document.querySelector<HTMLElement>("#stage")!;
 const mascot = document.querySelector<SVGSVGElement>("#mascot")!;
-const bubble = new Bubble(document.querySelector<HTMLElement>("#bubble")!);
+const bubbleEl = document.querySelector<HTMLElement>("#bubble")!;
+const bubble = new Bubble(bubbleEl);
 
 let character: Character = "tora";
 let chatty = true;
@@ -30,6 +34,16 @@ function say(occasion: Occasion) {
   if (line) bubble.say(line);
 }
 
+// リマインダーを 1 件ずつ、クリックされたら次を出す。
+// 全画面アプリの上で隠れている間は出さず、戻ってから出す
+function showNextReminder() {
+  if (suppressed || bubble.isPinned) return;
+  const text = pendingReminders.shift();
+  if (text === undefined) return;
+  rejoice();
+  bubble.remind(text);
+}
+
 // 指定座標（ウィンドウ内の CSS ピクセル）がキャラクターの不透明部分か
 function hitTest(x: number, y: number): boolean {
   if (suppressed) return false;
@@ -37,14 +51,25 @@ function hitTest(x: number, y: number): boolean {
     return false;
   }
   const el = document.elementFromPoint(x, y);
+  return isMascotHit(el) || isReminderBubble(el);
+}
+
+function isMascotHit(el: Element | null): boolean {
   return el instanceof SVGElement && el.classList.contains("hit");
+}
+
+// リマインダーのふきだしの上か（クリックして閉じられる）
+function isReminderBubble(el: Element | null): boolean {
+  return el instanceof HTMLElement && el.id === "bubble" && el.classList.contains("reminder");
 }
 
 async function updateHover(x: number, y: number) {
   const hit = hitTest(x, y);
   if (hit === overMascot) return;
   overMascot = hit;
-  mascot.classList.toggle("hover", hit);
+  // ふきだしの上では、キャラクターは反応させない
+  const overBody = hit && isMascotHit(document.elementFromPoint(x, y));
+  mascot.classList.toggle("hover", overBody);
   if (hit) cancelEmote();
   // 不透明部分に乗ったらクリックを受け付け、離れたら再び透過する
   await invoke("set_click_through", { ignore: !hit });
@@ -168,6 +193,7 @@ await listen<FlagPayload>("mascot-sleep", (e) => {
 await listen<FlagPayload>("mascot-suppress", (e) => {
   suppressed = e.payload.on;
   stage.classList.toggle("suppressed", suppressed);
+  if (!suppressed) showNextReminder();
   if (suppressed) {
     // Rust 側でクリックスルーに戻しているので、こちらの状態も合わせる
     overMascot = false;
@@ -185,6 +211,11 @@ await listen<SettingsPayload>("mascot-settings", (e) => {
     character = next;
     renderSprite(mascot, character);
   }
+});
+
+await listen<string>("mascot-reminder", (e) => {
+  pendingReminders.push(e.payload);
+  showNextReminder();
 });
 
 await listen<SayPayload>("mascot-say", (e) => {
@@ -228,6 +259,21 @@ function spin() {
   say("spin");
 }
 
+// リマインダーのふきだしをクリックしたら消して、次のリマインダーがあれば出す
+bubbleEl.addEventListener("click", () => {
+  if (!bubble.isPinned) return;
+  bubble.dismiss();
+  showNextReminder();
+});
+
+// 右クリックで、トレイと同じメニューをその場に出す
+window.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  if (!overMascot) return;
+  pressAt = null;
+  void invoke("show_context_menu");
+});
+
 mascot.addEventListener("mousedown", (e) => {
   if (e.button === 0 && overMascot) {
     pressAt = { x: e.clientX, y: e.clientY };
@@ -250,7 +296,11 @@ window.addEventListener("mousemove", (e) => {
 window.addEventListener("mouseup", (e) => {
   if (pressAt && e.button === 0) {
     clearTimeout(clickTimer);
-    if (e.detail >= 2) {
+    if (bubble.isPinned) {
+      // キャラクターをクリックしても、リマインダーを閉じられる
+      bubble.dismiss();
+      showNextReminder();
+    } else if (e.detail >= 2) {
       spin();
     } else {
       clickTimer = window.setTimeout(rejoice, DOUBLE_CLICK_WAIT_MS);

@@ -1,6 +1,7 @@
 mod about;
 mod geometry;
 mod physics;
+mod reminder;
 mod settings;
 mod system;
 mod tray;
@@ -114,6 +115,12 @@ fn set_click_through(
 #[tauri::command]
 fn start_drag(shared: State<Arc<Shared>>) {
     shared.drag_started.store(true, Ordering::Relaxed);
+}
+
+/// マスコットを右クリックしたときに、トレイと同じメニューをその場に出す
+#[tauri::command]
+fn show_context_menu(window: WebviewWindow) {
+    tray::popup(&window);
 }
 
 /// フロントエンドがイベントを受け取れるようになったら呼ばれる。
@@ -233,7 +240,11 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             set_click_through,
             frontend_ready,
-            start_drag
+            start_drag,
+            show_context_menu,
+            reminder::list_reminders,
+            reminder::add_reminder,
+            reminder::delete_reminder
         ])
         .setup(|app| {
             // Dock に表示せず、メニューバー常駐アプリとして動かす
@@ -262,6 +273,7 @@ pub fn run() {
             restore(&window, &shared);
 
             spawn_cursor_watcher(app.handle().clone(), shared.clone());
+            reminder::spawn_scheduler(app.handle().clone(), shared.clone());
             wander::spawn(app.handle().clone(), shared);
             Ok(())
         })

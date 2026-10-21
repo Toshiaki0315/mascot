@@ -1,0 +1,155 @@
+:root {
+  color-scheme: light dark;
+  --bg: #fbf8f2;
+  --fg: #3b2a1a;
+  --muted: #8a7a6a;
+  --line: #e2d8c8;
+  --field: #ffffff;
+  --accent: #d9692a;
+  --accent-fg: #ffffff;
+  --danger: #c0392b;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #2a2622;
+    --fg: #f1e8da;
+    --muted: #a89a88;
+    --line: #4a423a;
+    --field: #1f1c19;
+    --accent: #e8803f;
+    --danger: #ef6a5a;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 14px/1.5 -apple-system, "Hiragino Sans", sans-serif;
+}
+main {
+  padding: 16px;
+}
+
+form {
+  display: grid;
+  gap: 12px;
+}
+label {
+  display: grid;
+  gap: 4px;
+  font-weight: 600;
+}
+input,
+select {
+  font: inherit;
+  padding: 7px 9px;
+  color: var(--fg);
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+input:focus,
+select:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.when-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.quick button {
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 10px;
+  color: var(--fg);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.quick button:hover {
+  border-color: var(--accent);
+}
+
+#add {
+  font: inherit;
+  font-weight: 700;
+  padding: 8px;
+  color: var(--accent-fg);
+  background: var(--accent);
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+#error {
+  margin: 0;
+  min-height: 1.5em;
+  color: var(--danger);
+  font-size: 13px;
+}
+
+h2 {
+  margin: 20px 0 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  color: var(--muted);
+}
+ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 2px 8px;
+  padding: 8px 10px;
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+li .text {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+li .when {
+  grid-column: 1;
+  font-size: 12px;
+  color: var(--muted);
+}
+li button {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 10px;
+  color: var(--danger);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+}
+li button:hover {
+  border-color: var(--danger);
+}
+#empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}

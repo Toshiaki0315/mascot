@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>リマインダー</title>
+    <link rel="stylesheet" href="/src/reminders.css" />
+  </head>
+  <body>
+    <main>
+      <form id="form" autocomplete="off">
+        <label>
+          内容
+          <input id="text" type="text" maxlength="30" placeholder="例：会議の準備" required />
+        </label>
+        <div class="when-row">
+          <label>
+            日付
+            <input id="date" type="date" required />
+          </label>
+          <label>
+            時刻
+            <input id="time" type="time" required />
+          </label>
+        </div>
+        <div class="quick" aria-label="日時のかんたん設定">
+          <button type="button" data-min="5">5 分後</button>
+          <button type="button" data-min="15">15 分後</button>
+          <button type="button" data-min="30">30 分後</button>
+          <button type="button" data-min="60">1 時間後</button>
+        </div>
+        <label>
+          くり返し
+          <select id="repeat">
+            <option value="once">しない</option>
+            <option value="daily">毎日</option>
+            <option value="weekly">毎週</option>
+          </select>
+        </label>
+        <p id="error" role="alert"></p>
+        <button id="add" type="submit">追加</button>
+      </form>
+
+      <h2>登録済み</h2>
+      <ul id="list"></ul>
+      <p id="empty">リマインダーはありません</p>
+    </main>
+    <script type="module" src="/src/reminders.ts"></script>
+  </body>
+</html>

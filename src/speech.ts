@@ -52,26 +52,58 @@ export function hourLine(hour: number, character: Character): string {
 
 const SHOW_MS = 3500;
 
+/// リマインダーのふきだしは、クリックされるまで（または長く放置されるまで）出し続ける
+const REMIND_MS = 5 * 60_000;
+
 export class Bubble {
   private readonly el: HTMLElement;
   private timer: number | undefined;
+  private pinned = false;
 
   constructor(el: HTMLElement) {
     this.el = el;
   }
 
+  /// リマインダーを出している間か
+  get isPinned() {
+    return this.pinned;
+  }
+
   say(text: string) {
+    // リマインダーを出している間は、ふつうのおしゃべりで上書きしない
+    if (this.pinned) return;
+    this.show(text, SHOW_MS);
+  }
+
+  /// リマインダーを出す。ふつうのおしゃべりや hide() では消えない
+  remind(text: string) {
+    this.pinned = true;
+    // 短い文ほど大きな字で出す
+    const length = [...text].length;
+    this.el.classList.remove("r-lg", "r-md");
+    this.el.classList.add("reminder", length <= 8 ? "r-lg" : length <= 16 ? "r-md" : "r-sm");
+    this.show(text, REMIND_MS);
+  }
+
+  private show(text: string, ms: number) {
     this.el.textContent = text;
     // 表示中に次のセリフが来たら、ポップのアニメーションからやり直す
     this.el.classList.remove("show");
     void this.el.offsetWidth;
     this.el.classList.add("show");
     clearTimeout(this.timer);
-    this.timer = window.setTimeout(() => this.hide(), SHOW_MS);
+    this.timer = window.setTimeout(() => this.dismiss(), ms);
   }
 
   hide() {
+    if (this.pinned) return;
+    this.dismiss();
+  }
+
+  /// リマインダーも含めて消す
+  dismiss() {
     clearTimeout(this.timer);
-    this.el.classList.remove("show");
+    this.pinned = false;
+    this.el.classList.remove("show", "reminder", "r-lg", "r-md", "r-sm");
   }
 }

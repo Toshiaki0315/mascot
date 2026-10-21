@@ -4,6 +4,8 @@ use std::{fs, path::PathBuf, sync::Mutex};
 
 use serde::{Deserialize, Serialize};
 
+use crate::reminder::Reminder;
+
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Speed {
@@ -106,6 +108,7 @@ pub struct Settings {
     /// ふきだしでおしゃべりする
     pub chatty: bool,
     pub character: Character,
+    pub reminders: Vec<Reminder>,
 }
 
 impl Default for Settings {
@@ -119,6 +122,7 @@ impl Default for Settings {
             hide_on_fullscreen: true,
             chatty: true,
             character: Character::Tora,
+            reminders: Vec::new(),
         }
     }
 }
@@ -200,6 +204,25 @@ mod tests {
         assert!(!s.visible && !s.hide_on_fullscreen);
         assert!(s.speed == Speed::Fast && s.scale == 2.0);
         assert!(s.chatty && s.character == Character::Tora);
+    }
+
+    #[test]
+    fn reminders_are_saved_and_reloaded() {
+        use crate::reminder::Repeat;
+        let path = temp_path("reminders.json");
+        let _ = fs::remove_file(&path);
+        let store = Store::load(path.clone());
+        store.update(|s| {
+            s.reminders.push(Reminder {
+                id: 1,
+                text: "会議".into(),
+                at: 1234,
+                repeat: Repeat::Daily,
+            })
+        });
+        let s = Store::load(path).get();
+        assert_eq!(s.reminders.len(), 1);
+        assert!(s.reminders[0].text == "会議" && s.reminders[0].repeat == Repeat::Daily);
     }
 
     #[test]
