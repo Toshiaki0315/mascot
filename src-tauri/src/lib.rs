@@ -247,6 +247,7 @@ pub fn run() {
             reminder::add_reminder,
             reminder::snooze_reminder,
             reminder::notify_reminder,
+            reminder::update_reminder,
             reminder::delete_reminder
         ])
         .setup(|app| {

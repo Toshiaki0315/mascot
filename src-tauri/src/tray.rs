@@ -1,6 +1,8 @@
 //! メニューバーのトレイアイコンと設定メニュー
 
-use std::sync::{atomic::Ordering, Arc};
+use std::sync::{atomic::Ordering, Arc, Mutex};
+
+use chrono::{Datelike, Local, TimeZone, Timelike};
 
 use tauri::{
     image::Image,
@@ -11,7 +13,9 @@ use tauri::{
 use tauri_plugin_autostart::ManagerExt;
 
 use crate::{
-    about, apply_scale, emit_settings, reminder, save_current_position,
+    about, apply_scale, emit_settings,
+    reminder::{self, Reminder, Repeat},
+    save_current_position,
     settings::{Character, Speed, SCALES},
     Shared, MAIN_WINDOW,
 };
@@ -26,6 +30,9 @@ struct TrayItems {
     chatty: CheckMenuItem<Wry>,
     autostart: CheckMenuItem<Wry>,
     reminder_sound: CheckMenuItem<Wry>,
+    /// 「リマインダー」のサブメニューと、その中の直近の予定の行（予定が変わるたびに作り直す）
+    reminder_menu: Submenu<Wry>,
+    reminder_rows: Mutex<Vec<MenuItem<Wry>>>,
     /// トレイと、マスコットの右クリックで共有する
     menu: Menu<Wry>,
 }
@@ -46,7 +53,19 @@ pub fn setup(app: &tauri::App, shared: &Arc<Shared>) -> tauri::Result<()> {
         None::<&str>,
     )?;
     let toggle = MenuItem::with_id(app, "toggle", "表示 / 非表示", true, None::<&str>)?;
-    let reminders = MenuItem::with_id(app, "reminders", "リマインダー…", true, None::<&str>)?;
+    let manage_reminders = MenuItem::with_id(
+        app,
+        "reminders",
+        "リマインダーの追加・編集…",
+        true,
+        None::<&str>,
+    )?;
+    let reminder_menu = Submenu::with_items(
+        app,
+        "リマインダー",
+        true,
+        &[&manage_reminders, &PredefinedMenuItem::separator(app)?],
+    )?;
     let walking = CheckMenuItem::with_id(
         app,
         "walking",
@@ -168,7 +187,7 @@ pub fn setup(app: &tauri::App, shared: &Arc<Shared>) -> tauri::Result<()> {
             &about,
             &PredefinedMenuItem::separator(app)?,
             &toggle,
-            &reminders,
+            &reminder_menu,
             &PredefinedMenuItem::separator(app)?,
             &character_menu,
             &walking,
@@ -193,6 +212,8 @@ pub fn setup(app: &tauri::App, shared: &Arc<Shared>) -> tauri::Result<()> {
         chatty,
         autostart,
         reminder_sound,
+        reminder_menu,
+        reminder_rows: Mutex::new(Vec::new()),
         menu: menu.clone(),
     });
 
@@ -206,7 +227,85 @@ pub fn setup(app: &tauri::App, shared: &Arc<Shared>) -> tauri::Result<()> {
         .show_menu_on_left_click(true)
         .on_menu_event(|app, event| on_menu(app, event.id.as_ref()))
         .build(app)?;
+    refresh_reminders(app.handle());
     Ok(())
+}
+
+/// メニューに出す直近のリマインダーの件数
+const UPCOMING: usize = 5;
+/// メニューの 1 行に出す内容の文字数
+const LABEL_CHARS: usize = 14;
+
+fn reminder_label(r: &Reminder) -> String {
+    let when = match Local.timestamp_millis_opt(r.at).single() {
+        Some(dt) => format!(
+            "{}/{} {:02}:{:02}",
+            dt.month(),
+            dt.day(),
+            dt.hour(),
+            dt.minute()
+        ),
+        None => String::new(),
+    };
+    let mark = if r.repeat == Repeat::Once { "" } else { " ↻" };
+    let chars: Vec<char> = r.text.chars().collect();
+    let text = if chars.len() > LABEL_CHARS {
+        format!("{}…", chars[..LABEL_CHARS - 1].iter().collect::<String>())
+    } else {
+        r.text.clone()
+    };
+    format!("{when}{mark}  {text}")
+}
+
+/// 「リマインダー」サブメニューの、直近の予定の行を作り直す。
+/// 予定を足した・直した・消した・知らせたときに呼ぶ
+pub fn refresh_reminders(app: &AppHandle) {
+    let (Some(items), Some(shared)) =
+        (app.try_state::<TrayItems>(), app.try_state::<Arc<Shared>>())
+    else {
+        return;
+    };
+    let mut list = shared.store.get().reminders;
+    list.sort_by_key(|r| (r.at, r.id));
+
+    let mut rows = items.reminder_rows.lock().unwrap();
+    for row in rows.drain(..) {
+        let _ = items.reminder_menu.remove(&row);
+    }
+    let mut new_rows = Vec::new();
+    if list.is_empty() {
+        new_rows.extend(MenuItem::with_id(
+            app,
+            "reminders-none",
+            "予定はありません",
+            false,
+            None::<&str>,
+        ));
+    }
+    for r in list.iter().take(UPCOMING) {
+        // 押すと、追加・編集のウィンドウが開く
+        new_rows.extend(MenuItem::with_id(
+            app,
+            format!("reminders-item-{}", r.id),
+            reminder_label(r),
+            true,
+            None::<&str>,
+        ));
+    }
+    if list.len() > UPCOMING {
+        new_rows.extend(MenuItem::with_id(
+            app,
+            "reminders-more",
+            format!("ほか {} 件", list.len() - UPCOMING),
+            false,
+            None::<&str>,
+        ));
+    }
+    for row in new_rows {
+        if items.reminder_menu.append(&row).is_ok() {
+            rows.push(row);
+        }
+    }
 }
 
 /// マスコットの上に、トレイと同じメニューを出す
@@ -227,7 +326,7 @@ fn on_menu(app: &AppHandle, id: &str) {
             let info = app.package_info();
             about::show(&info.name, &info.version.to_string());
         }
-        "reminders" => reminder::open_window(app),
+        id if id.starts_with("reminders") => reminder::open_window(app),
         "toggle" => {
             let visible = !window.is_visible().unwrap_or(false);
             let _ = if visible {

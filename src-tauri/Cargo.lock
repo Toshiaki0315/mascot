@@ -749,6 +749,7 @@ dependencies = [
 name = "desktop-mascot"
 version = "0.6.1"
 dependencies = [
+ "chrono",
  "core-foundation",
  "objc2",
  "objc2-app-kit",

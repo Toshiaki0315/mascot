@@ -221,6 +221,7 @@ mod tests {
                 text: "会議".into(),
                 at: 1234,
                 repeat: Repeat::Daily,
+                days: 0,
             })
         });
         let s = Store::load(path).get();

@@ -34,14 +34,28 @@
           <select id="repeat">
             <option value="once">しない</option>
             <option value="daily">毎日</option>
+            <option value="weekdays">平日（月〜金）</option>
             <option value="weekly">毎週</option>
+            <option value="days">曜日を選ぶ</option>
           </select>
         </label>
+        <div id="days" class="days" hidden aria-label="くり返す曜日">
+          <label><input type="checkbox" value="0" />月</label>
+          <label><input type="checkbox" value="1" />火</label>
+          <label><input type="checkbox" value="2" />水</label>
+          <label><input type="checkbox" value="3" />木</label>
+          <label><input type="checkbox" value="4" />金</label>
+          <label><input type="checkbox" value="5" />土</label>
+          <label><input type="checkbox" value="6" />日</label>
+        </div>
         <p id="error" role="alert"></p>
-        <button id="add" type="submit">追加</button>
+        <div class="buttons">
+          <button id="add" type="submit">追加</button>
+          <button id="cancel" type="button" hidden>キャンセル</button>
+        </div>
       </form>
 
-      <h2>登録済み</h2>
+      <h2 id="list-title">登録済み</h2>
       <ul id="list"></ul>
       <p id="empty">リマインダーはありません</p>
     </main>
