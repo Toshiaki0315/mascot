@@ -490,9 +490,14 @@ impl Brain {
 
     // ---- ドラッグ・投げる ----
 
-    /// ドラッグ中なら true。手を離した瞬間の速さが十分なら投げる
+    /// ドラッグ中なら true。手を離した瞬間の速さが十分なら投げる。
+    /// ドラッグ中のウィンドウは macOS が動かすので、その間は実際の位置を読み続ける
     fn track_drag(&mut self, hovering: bool) -> bool {
-        let dragging = hovering && system::is_left_button_down();
+        // フロントエンドがドラッグを始めた知らせ。カーソルの判定に頼ると、
+        // ウィンドウが動いた直後に「カーソルが外れた」と誤判定してドラッグを見逃すことがある
+        let started = self.shared.drag_started.swap(false, Ordering::Relaxed);
+        let watching = started || hovering || self.drag.is_some();
+        let dragging = started || (watching && system::is_left_button_down());
         if dragging {
             if self.drag.is_none() {
                 // 飛んでいる最中につかまれたら、そこで止まる
@@ -705,6 +710,10 @@ impl Brain {
         let hovering = self.shared.hovering.load(Ordering::Relaxed);
         if self.track_drag(hovering) {
             return;
+        }
+        if hovering {
+            // カーソルが乗っている間は動かされたかもしれないので、覚えている位置は使わない
+            self.pos = None;
         }
 
         let interval = if matches!(self.mode, Mode::Perched(_)) {

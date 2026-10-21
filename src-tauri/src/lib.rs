@@ -52,6 +52,8 @@ pub(crate) struct Shared {
     hovering: AtomicBool,
     /// 大きさの変更などでウィンドウが動いたので、歩き方を計算し直してほしい
     reset: AtomicBool,
+    /// フロントエンドがウィンドウのドラッグを始めた（頭脳スレッドが受け取ったら false に戻す）
+    drag_started: AtomicBool,
     /// フロントエンドが（再）読み込みされたので、今の状態を送り直してほしい
     resync: AtomicBool,
     /// トレイで「表示」になっているか（毎回 is_visible() を問い合わせないためのキャッシュ）
@@ -106,6 +108,12 @@ fn set_click_through(
     window
         .set_ignore_cursor_events(ignore)
         .map_err(|e| e.to_string())
+}
+
+/// フロントエンドがウィンドウのドラッグを始める直前に呼ばれる
+#[tauri::command]
+fn start_drag(shared: State<Arc<Shared>>) {
+    shared.drag_started.store(true, Ordering::Relaxed);
 }
 
 /// フロントエンドがイベントを受け取れるようになったら呼ばれる。
@@ -202,7 +210,11 @@ pub fn run() {
             MacosLauncher::LaunchAgent,
             None,
         ))
-        .invoke_handler(tauri::generate_handler![set_click_through, frontend_ready])
+        .invoke_handler(tauri::generate_handler![
+            set_click_through,
+            frontend_ready,
+            start_drag
+        ])
         .setup(|app| {
             // Dock に表示せず、メニューバー常駐アプリとして動かす
             #[cfg(target_os = "macos")]
@@ -212,6 +224,7 @@ pub fn run() {
             let shared = Arc::new(Shared {
                 hovering: AtomicBool::new(false),
                 reset: AtomicBool::new(false),
+                drag_started: AtomicBool::new(false),
                 resync: AtomicBool::new(false),
                 visible: AtomicBool::new(true),
                 geometry: Mutex::new(None),

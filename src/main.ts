@@ -239,6 +239,9 @@ window.addEventListener("mousemove", (e) => {
   if (Math.hypot(e.clientX - pressAt.x, e.clientY - pressAt.y) >= DRAG_THRESHOLD) {
     pressAt = null;
     bubble.hide();
+    // ドラッグで動かした先から歩き出せるよう、Rust 側にドラッグの始まりを知らせる。
+    // macOS のドラッグはマウスのイベントの最中に始める必要があるので、返事は待たない
+    void invoke("start_drag");
     getCurrentWindow().startDragging();
   }
 });
