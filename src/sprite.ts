@@ -1,6 +1,5 @@
 // 16×16 のドット絵スプライト
 //   . 透明  O 輪郭  B 体  D / K 模様（三毛の茶・黒、いぬの耳）  E 目  e 目の上半分（まばたきで消える）
-//   G / Y くらにゃんの服の灰・黄  N / M くらにゃんのスカーフの青・紫
 //   P ほっぺ  H ハート  Z 寝息の「Z」
 // 色はキャラクターごとに styles.css の CSS 変数で決まる。
 // 目・表情は体の上に重ねる部品にして、CSS で切り替える
@@ -58,7 +57,7 @@ const INU_BODY = [
   "..OOBBBOOBBBOO..",
 ];
 
-// くらにゃん：白い顔に茶と黒のぶち、大きなほっぺ、スカーフと服つき
+// くらにゃん：白い顔に茶と黒のぶち、大きなほっぺ
 const KURANYAN_BODY = [
   "..OO........OO..",
   ".ODDO......OKKO.",
@@ -69,10 +68,10 @@ const KURANYAN_BODY = [
   "OBBBBBBBBBBBBBBO",
   "OBBBBBBBBBBBBBBO",
   "OBPPBBBOOBBBPPBO",
+  "OBBBBBBBBBBBBBBO",
+  "OBBBBBBBBBBBBBBO",
   ".OBBBBBBBBBBBBO.",
-  "..ONNNNMMNNNNO..",
-  "..OGGGGGGGGGGO..",
-  "..OYYYYYYYYYYO..",
+  "..OOBBBOOBBBOO..",
 ];
 
 const BODIES: Record<Character, string[]> = {
@@ -88,6 +87,11 @@ const BODIES: Record<Character, string[]> = {
 const EYES = [
   "...ee......ee...",
   "...EE......EE...",
+];
+// くらにゃんの目は 1 ドット
+const KURANYAN_EYES = [
+  "................",
+  "....e......e....",
 ];
 const FACE_TOP = 6;
 
@@ -206,7 +210,7 @@ export function renderSprite(svg: SVGSVGElement, character: Character = "tora") 
   const zzz = group("zzz");
   zzz.append(part("z-small", Z_SMALL, -2, false, 7), part("z-large", Z_LARGE, -3, false, 6));
   bounce.append(
-    part("eyes", EYES, FACE_TOP),
+    part("eyes", character === "kuranyan" ? KURANYAN_EYES : EYES, FACE_TOP),
     part("legs-a", LEGS_A, LEGS_TOP, true),
     part("legs-b", LEGS_B, LEGS_TOP, true),
     part("face-happy", HAPPY_FACE, FACE_TOP),
@@ -231,6 +235,7 @@ export function validateSprites(): string[] {
   const all: Record<string, string[]> = {
     ...BODIES,
     EYES,
+    KURANYAN_EYES,
     LEGS_A,
     LEGS_B,
     HAPPY_FACE,
