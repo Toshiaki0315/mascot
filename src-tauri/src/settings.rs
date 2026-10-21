@@ -49,15 +49,17 @@ pub enum Character {
     Shiro,
     Mike,
     Inu,
+    Kuranyan,
 }
 
 impl Character {
-    pub const ALL: [Character; 5] = [
+    pub const ALL: [Character; 6] = [
         Character::Tora,
         Character::Kuro,
         Character::Shiro,
         Character::Mike,
         Character::Inu,
+        Character::Kuranyan,
     ];
 
     pub fn label(self) -> &'static str {
@@ -67,6 +69,7 @@ impl Character {
             Character::Shiro => "白ネコ",
             Character::Mike => "三毛ネコ",
             Character::Inu => "いぬ",
+            Character::Kuranyan => "くらにゃん",
         }
     }
 
@@ -78,6 +81,7 @@ impl Character {
             Character::Shiro => "char-shiro",
             Character::Mike => "char-mike",
             Character::Inu => "char-inu",
+            Character::Kuranyan => "char-kuranyan",
         }
     }
 
@@ -221,6 +225,7 @@ mod tests {
     #[test]
     fn character_names() {
         assert_eq!(Character::Mike.name(), "mike");
+        assert_eq!(Character::Kuranyan.name(), "kuranyan");
         for c in Character::ALL {
             assert!(c.id().starts_with("char-"));
         }

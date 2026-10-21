@@ -1,10 +1,11 @@
 // 16×16 のドット絵スプライト
 //   . 透明  O 輪郭  B 体  D / K 模様（三毛の茶・黒、いぬの耳）  E 目  e 目の上半分（まばたきで消える）
+//   G / Y くらにゃんの服の灰・黄  N / M くらにゃんのスカーフの青・紫
 //   P ほっぺ  H ハート  Z 寝息の「Z」
 // 色はキャラクターごとに styles.css の CSS 変数で決まる。
 // 目・表情は体の上に重ねる部品にして、CSS で切り替える
 
-export const CHARACTERS = ["tora", "kuro", "shiro", "mike", "inu"] as const;
+export const CHARACTERS = ["tora", "kuro", "shiro", "mike", "inu", "kuranyan"] as const;
 export type Character = (typeof CHARACTERS)[number];
 
 const CAT_BODY = [
@@ -57,12 +58,30 @@ const INU_BODY = [
   "..OOBBBOOBBBOO..",
 ];
 
+// くらにゃん：白い顔に茶と黒のぶち、大きなほっぺ、スカーフと服つき
+const KURANYAN_BODY = [
+  "..OO........OO..",
+  ".ODDO......OKKO.",
+  ".ODDDO....OKKKO.",
+  ".ODDDDOOOOKKKKO.",
+  "OBDDDDBBBBBKKKBO",
+  "OBBDDBBBBBBBKKBO",
+  "OBBBBBBBBBBBBBBO",
+  "OBBBBBBBBBBBBBBO",
+  "OBPPBBBOOBBBPPBO",
+  ".OBBBBBBBBBBBBO.",
+  "..ONNNNMMNNNNO..",
+  "..OGGGGGGGGGGO..",
+  "..OYYYYYYYYYYO..",
+];
+
 const BODIES: Record<Character, string[]> = {
   tora: CAT_BODY,
   kuro: CAT_BODY,
   shiro: CAT_BODY,
   mike: MIKE_BODY,
   inu: INU_BODY,
+  kuranyan: KURANYAN_BODY,
 };
 
 // 通常の目。カーソルや進行方向に合わせて左右に 1 ドットずらす

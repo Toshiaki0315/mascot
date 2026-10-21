@@ -85,12 +85,26 @@ body {
   --c-e: #2a1a10;
 }
 
+#mascot.char-kuranyan {
+  --c-o: #2a2424;
+  --c-b: #ffffff;
+  --c-d: #e8a63c;
+  --c-k: #343a36;
+  --c-e: #141010;
+  --c-p: #f0a08a;
+  --c-p-hover: #ff7f6a;
+}
+
 .px-O { fill: var(--c-o); }
 .px-B { fill: var(--c-b); }
 .px-D { fill: var(--c-d); }
 .px-K { fill: var(--c-k); }
 .px-E { fill: var(--c-e); }
 .px-P { fill: var(--c-p); }
+.px-G { fill: #9a9496; }
+.px-Y { fill: #fbf070; }
+.px-N { fill: #4aa8c0; }
+.px-M { fill: #9b59c8; }
 .px-H { fill: #ff4f7a; }
 .px-Z { fill: #4a5a9a; }
 .px-S { fill: rgba(0, 0, 0, 0.2); }
