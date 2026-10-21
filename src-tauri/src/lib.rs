@@ -203,9 +203,29 @@ fn restore(window: &WebviewWindow, shared: &Shared) {
     }
 }
 
+/// 2 つ目が起動されようとした時に、動いている方のマスコットを表示する
+fn show_existing(app: &AppHandle) {
+    let (Some(window), Some(shared)) = (
+        app.get_webview_window(MAIN_WINDOW),
+        app.try_state::<Arc<Shared>>(),
+    ) else {
+        return;
+    };
+    if !shared.visible.swap(true, Ordering::Relaxed) {
+        let _ = window.show();
+        shared.store.update(|s| s.visible = true);
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // 起動できるのは 1 つだけ。2 つ目を起動したら、そちらはすぐ終了し、
+        // 動いている方のマスコットを表示する（非表示にしていても出てくる）。
+        // ほかのプラグインより先に登録する必要がある
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            show_existing(app);
+        }))
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
             None,
