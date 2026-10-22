@@ -1,6 +1,6 @@
 // 16×16 のドット絵スプライト
 //   . 透明  O 輪郭  B 体  D / K 模様（三毛の茶・黒、いぬの耳）  E 目  e 目の上半分（まばたきで消える）
-//   R 鼻・口・耳の内側（くらにゃん）  P ほっぺ  H ハート  Z 寝息の「Z」
+//   R 鼻・口・耳の内側（くらにゃん）  F Y G T M くらにゃんのスカーフの赤・黄・緑・青緑・紫  P ほっぺ  H ハート  Z 寝息の「Z」
 // 色はキャラクターごとに styles.css の CSS 変数で決まる。
 // 目・表情は体の上に重ねる部品にして、CSS で切り替える
 
@@ -57,27 +57,64 @@ const INU_BODY = [
   "..OOBBBOOBBBOO..",
 ];
 
-// くらにゃん：白い顔に茶と黒のぶち、大きなほっぺ
+// くらにゃん：ハチワレ風のおでこ（白いくさび）に茶と黒のぶち、大きなほっぺ、虹色のスカーフ。
+// 鼻と口は目と同じく別の部品（下の KURANYAN_*）で、向きや表情で切り替える
 const KURANYAN_BODY = [
   "..OO........OO..",
   ".ODDO......OKKO.",
   ".ODRDO....OKRKO.",
   ".ODDDDOOOOKKKKO.",
-  ".ODDDDDBBBKKKKO.",
-  ".ODDDDBBBBBKKKO.",
-  ".OBDDBBBBBBBKKO.",
+  ".ODDDDDBBKKKKKO.",
+  ".ODDDDBBBBKKKKO.",
+  ".ODDBBBBBBBBKKO.",
   ".OBBBBBBBBBBBBO.",
   "OOPPPBBBBBBPPPOO",
   ".OPPPBBBBBBPPPO.",
   "OOBBBBBBBBBBBBOO",
-  ".OBBBBBBBBBBBBO.",
-  "..OOBBBOOBBBOO..",
+  ".OFYGTFYGTFYGTO.",
+  "..OOGTFOOYGTMM..",
+  ".............T..",
+  ".............T..",
 ];
 
-// くらにゃんの口（輪郭なしの赤い口）。表情の間は隠す
-const KURANYAN_MOUTH = [
+// くらにゃんの目は 1 ドット（まばたきで消える）
+const KURANYAN_EYES = [
   "................",
-  "......RRRR......",
+  "....e......e....",
+];
+// 鼻（8 行目）。正面は 2 ドットで中央、向いたときは 1 ドットで向いた側にずれる
+const KURANYAN_NOSE_FRONT = [".......RR......."];
+const KURANYAN_NOSE_LEFT = [".......R........"];
+const KURANYAN_NOSE_RIGHT = ["........R......."];
+const KURANYAN_NOSE_TOP = 8;
+// 口（9 行目、輪郭なしの赤い口）。表情の間は隠す
+const KURANYAN_MOUTH = ["......RRRR......"];
+const KURANYAN_MOUTH_TOP = 9;
+// くらにゃんの表情（FACE_TOP 行目から）。ふつうのネコ用のものはスカーフや鼻に重なるので、専用にしている
+const KURANYAN_HAPPY_FACE = [
+  "....E......E....",
+  "...E.E....E.E...",
+  "................",
+  ".....ORRRRO.....",
+];
+const KURANYAN_SLEEP_FACE = [
+  "................",
+  "...EEE....EEE...",
+  "................",
+  ".......RR.......",
+];
+const KURANYAN_YAWN_FACE = [
+  "................",
+  "...EEE....EEE...",
+  "................",
+  ".....OOOOOO.....",
+  ".....ORRRRO.....",
+];
+const KURANYAN_FLYING_FACE = [
+  "....E......E....",
+  "....E......E....",
+  "................",
+  ".......OO.......",
 ];
 
 const BODIES: Record<Character, string[]> = {
@@ -93,11 +130,6 @@ const BODIES: Record<Character, string[]> = {
 const EYES = [
   "...ee......ee...",
   "...EE......EE...",
-];
-// くらにゃんの目は 1 ドット
-const KURANYAN_EYES = [
-  "................",
-  "....e......e....",
 ];
 const FACE_TOP = 6;
 
@@ -215,15 +247,23 @@ export function renderSprite(svg: SVGSVGElement, character: Character = "tora") 
   drawRows(bounce, BODIES[character], 0, true);
   const zzz = group("zzz");
   zzz.append(part("z-small", Z_SMALL, -2, false, 7), part("z-large", Z_LARGE, -3, false, 6));
+  const kuranyan = character === "kuranyan";
   bounce.append(
-    part("eyes", character === "kuranyan" ? KURANYAN_EYES : EYES, FACE_TOP),
-    ...(character === "kuranyan" ? [part("mouth", KURANYAN_MOUTH, 9)] : []),
+    part("eyes", kuranyan ? KURANYAN_EYES : EYES, FACE_TOP),
+    ...(kuranyan
+      ? [
+          part("nose nose-front", KURANYAN_NOSE_FRONT, KURANYAN_NOSE_TOP),
+          part("nose nose-left", KURANYAN_NOSE_LEFT, KURANYAN_NOSE_TOP),
+          part("nose nose-right", KURANYAN_NOSE_RIGHT, KURANYAN_NOSE_TOP),
+          part("mouth", KURANYAN_MOUTH, KURANYAN_MOUTH_TOP),
+        ]
+      : []),
     part("legs-a", LEGS_A, LEGS_TOP, true),
     part("legs-b", LEGS_B, LEGS_TOP, true),
-    part("face-happy", HAPPY_FACE, FACE_TOP),
-    part("face-sleep", SLEEP_FACE, FACE_TOP),
-    part("face-yawn", YAWN_FACE, FACE_TOP),
-    part("face-flying", FLYING_FACE, FACE_TOP),
+    part("face-happy", kuranyan ? KURANYAN_HAPPY_FACE : HAPPY_FACE, FACE_TOP),
+    part("face-sleep", kuranyan ? KURANYAN_SLEEP_FACE : SLEEP_FACE, FACE_TOP),
+    part("face-yawn", kuranyan ? KURANYAN_YAWN_FACE : YAWN_FACE, FACE_TOP),
+    part("face-flying", kuranyan ? KURANYAN_FLYING_FACE : FLYING_FACE, FACE_TOP),
     part("heart", HEART, 0),
     zzz,
   );
@@ -243,7 +283,14 @@ export function validateSprites(): string[] {
     ...BODIES,
     EYES,
     KURANYAN_EYES,
+    KURANYAN_NOSE_FRONT,
+    KURANYAN_NOSE_LEFT,
+    KURANYAN_NOSE_RIGHT,
     KURANYAN_MOUTH,
+    KURANYAN_HAPPY_FACE,
+    KURANYAN_SLEEP_FACE,
+    KURANYAN_YAWN_FACE,
+    KURANYAN_FLYING_FACE,
     LEGS_A,
     LEGS_B,
     HAPPY_FACE,

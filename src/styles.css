@@ -103,6 +103,11 @@ body {
 .px-E { fill: var(--c-e); }
 .px-P { fill: var(--c-p); }
 .px-R { fill: var(--c-r, #e8806a); }
+.px-F { fill: #e8503a; }
+.px-Y { fill: #f6c744; }
+.px-G { fill: #6bbf59; }
+.px-T { fill: #3fa7c2; }
+.px-M { fill: #9a59c9; }
 .px-H { fill: #ff4f7a; }
 .px-Z { fill: #4a5a9a; }
 .px-S { fill: rgba(0, 0, 0, 0.2); }
@@ -125,6 +130,20 @@ body {
 }
 #mascot.look-right .eyes {
   transform: translateX(1px);
+}
+
+/* くらにゃんの鼻：正面は 2 ドット、向いたときは 1 ドットで向いた側にずれる */
+.nose-left,
+.nose-right {
+  display: none;
+}
+#mascot.look-left .nose-front,
+#mascot.look-right .nose-front {
+  display: none;
+}
+#mascot.look-left .nose-left,
+#mascot.look-right .nose-right {
+  display: inline;
 }
 
 /* まばたき：目の上半分を消す（下には体のドットがある） */
