@@ -52,15 +52,11 @@ export function hourLine(hour: number, character: Character): string {
 
 const SHOW_MS = 3500;
 
-/// 大きなふきだしのボタン（[動作, 表示]）。`snooze` が false なら、「5 分後」は付けない
-/// （タイマーや天気など、あとで知らせ直す意味がないもの）
+/// 大きなふきだしのボタン（[動作, 表示]）。閉じるボタンはなく、ふきだしのどこかをクリックすると閉じる。
+/// 「5 分後」は `snooze` が true のとき（リマインダー）だけ付ける。タイマーや天気など、
+/// あとで知らせ直す意味がないものには、ボタンを付けない
 export function reminderActions(snooze: boolean): [string, string][] {
-  return snooze
-    ? [
-        ["snooze", "5 分後"],
-        ["close", "閉じる"],
-      ]
-    : [["close", "閉じる"]];
+  return snooze ? [["snooze", "5 分後にもう一度"]] : [];
 }
 
 /// ふつうのおしゃべりのふきだし。表示と消去は、渡された関数（大きなふきだしのウィンドウを動かす）で行い、

@@ -47,7 +47,9 @@ body.chat #wrap {
   line-height: 1.4;
   text-align: center;
   white-space: pre-wrap;
-  word-break: keep-all;
+  /* 日本語は文字の間で折り返す（keep-all だと、長い一続きの文が 1 文字だけ次の行に残ることがある） */
+  word-break: normal;
+  line-break: strict;
   overflow-wrap: anywhere;
 }
 body.chat #card {

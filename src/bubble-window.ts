@@ -18,15 +18,16 @@ function render({ text, snooze, scale, chat }: Content) {
   message.textContent = text;
   const actions = document.createElement("div");
   actions.className = "actions";
-  for (const [action, label] of reminderActions(snooze)) {
+  const buttons = reminderActions(snooze);
+  for (const [action, label] of buttons) {
     const button = document.createElement("span");
     button.className = "action";
     button.dataset.action = action;
     button.textContent = label;
     actions.append(button);
   }
-  // ふつうのおしゃべりには、ボタンを付けない
-  card.replaceChildren(...(chat ? [message] : [message, actions]));
+  // ふつうのおしゃべりと、ボタンのないリマインダーには、ボタンの行を付けない
+  card.replaceChildren(...(chat || buttons.length === 0 ? [message] : [message, actions]));
 }
 
 await listen<Content>("bubble-content", (e) => {
@@ -37,7 +38,7 @@ await listen<Content>("bubble-content", (e) => {
   void invoke("bubble_resize", { w: Math.ceil(rect.width), h: Math.ceil(rect.height) });
 });
 
-// ボタンの上ならそのボタン、それ以外（文字や枠）なら「閉じる」
+// ボタンの上ならそのボタン、それ以外（文字や枠）なら、ふきだしを閉じる
 wrap.addEventListener("click", (e) => {
   const action = (e.target as HTMLElement).closest<HTMLElement>("[data-action]")?.dataset.action;
   void invoke("bubble_action", { action: action === "snooze" ? "snooze" : "close" });

@@ -60,13 +60,10 @@ test("出している間の hide() は 1 回だけ消し、時間が来ても二
   mock.timers.reset();
 });
 
-test("大きなふきだしのボタン：snooze のときだけ「5 分後」が付く", () => {
+test("大きなふきだしのボタン：閉じるボタンはなく、snooze のときだけ「5 分後」が付く", () => {
   assert.deepEqual(
     reminderActions(true).map(([action]) => action),
-    ["snooze", "close"],
+    ["snooze"],
   );
-  assert.deepEqual(
-    reminderActions(false).map(([action]) => action),
-    ["close"],
-  );
+  assert.deepEqual(reminderActions(false), []);
 });
