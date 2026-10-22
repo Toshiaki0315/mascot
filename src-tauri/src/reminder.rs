@@ -6,7 +6,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use chrono::{Datelike, Duration as ChronoDuration, Local, TimeZone};
+use chrono::{Datelike, Duration as ChronoDuration, Local, NaiveDate, TimeZone};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_notification::NotificationExt;
@@ -35,6 +35,10 @@ pub enum Repeat {
     Once,
     Daily,
     Weekly,
+    /// 2 週に 1 回
+    Biweekly,
+    /// 毎月、同じ日（Reminder::days に日付を入れる。31 日は短い月では月末）
+    Monthly,
     /// 選んだ曜日だけ（Reminder::days のビット）
     Days,
 }
@@ -43,9 +47,10 @@ impl Repeat {
     /// 一定の間隔でくり返すものの間隔。曜日指定は間隔が一定でないので None
     fn period_ms(self) -> Option<i64> {
         match self {
-            Repeat::Once | Repeat::Days => None,
+            Repeat::Once | Repeat::Days | Repeat::Monthly => None,
             Repeat::Daily => Some(DAY_MS),
             Repeat::Weekly => Some(7 * DAY_MS),
+            Repeat::Biweekly => Some(14 * DAY_MS),
         }
     }
 }
@@ -60,7 +65,7 @@ pub struct Reminder {
     /// 次に知らせる時刻（UNIX エポックからのミリ秒）
     pub at: i64,
     pub repeat: Repeat,
-    /// repeat が Days のときの曜日（古い設定ファイルにはない）
+    /// repeat が Days のときの曜日のビット、Monthly のときの日付（古い設定ファイルにはない）
     #[serde(default)]
     pub days: u8,
 }
@@ -92,6 +97,51 @@ pub fn next_on_days<Tz: TimeZone>(
     at
 }
 
+fn days_in_month(year: i32, month: u32) -> u32 {
+    let (y, m) = if month == 12 {
+        (year + 1, 1)
+    } else {
+        (year, month + 1)
+    };
+    NaiveDate::from_ymd_opt(y, m, 1)
+        .and_then(|first| first.pred_opt())
+        .map_or(28, |last| last.day())
+}
+
+/// `at` と同じ時刻で、毎月 `day` 日（その月にない日は月末）にあたる、`now` より後の最初の日時。
+/// `from_next_month` なら `at` の翌月から探す
+pub fn next_monthly<Tz: TimeZone>(
+    tz: &Tz,
+    at: i64,
+    day: u32,
+    now: i64,
+    from_next_month: bool,
+) -> i64 {
+    let Some(base) = tz.timestamp_millis_opt(at).single() else {
+        return at;
+    };
+    let first = u32::from(from_next_month);
+    for k in first..first + 14 {
+        let months = base.year() * 12 + base.month0() as i32 + k as i32;
+        let (year, month) = (months.div_euclid(12), months.rem_euclid(12) as u32 + 1);
+        let Some(date) = NaiveDate::from_ymd_opt(year, month, day.min(days_in_month(year, month)))
+        else {
+            continue;
+        };
+        let Some(candidate) = tz
+            .from_local_datetime(&date.and_time(base.time()))
+            .earliest()
+        else {
+            continue;
+        };
+        let ms = candidate.timestamp_millis();
+        if ms > now {
+            return ms;
+        }
+    }
+    at
+}
+
 pub fn now_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -115,6 +165,10 @@ fn take_due_in<Tz: TimeZone>(tz: &Tz, list: &mut Vec<Reminder>, now: i64) -> Vec
         match (r.repeat, r.repeat.period_ms()) {
             (Repeat::Days, _) => {
                 r.at = next_on_days(tz, r.at, r.days, now, true);
+                true
+            }
+            (Repeat::Monthly, _) => {
+                r.at = next_monthly(tz, r.at, u32::from(r.days), now, true);
                 true
             }
             (_, Some(period)) => {
@@ -157,6 +211,14 @@ fn validate(text: &str, at: i64, repeat: Repeat, days: u8) -> Result<(String, i6
             }
             // 選んだ日付が対象の曜日でなければ、次の対象の日にする
             Ok((text, next_on_days(&Local, at, days, now, false), days))
+        }
+        Repeat::Monthly => {
+            // 最初に選んだ日付の「日」を、毎月の日として覚える
+            let day = Local
+                .timestamp_millis_opt(at)
+                .single()
+                .map_or(1, |dt| dt.day());
+            Ok((text, at, day as u8))
         }
         _ => Ok((text, at, 0)),
     }
@@ -435,5 +497,66 @@ mod tests {
         let fired = take_due_in(&jst(), &mut list, at_jst(23, 9, 1));
         assert_eq!(fired.len(), 1);
         assert_eq!(list[0].at, at_jst(26, 9, 0));
+    }
+
+    #[test]
+    fn biweekly_moves_by_two_weeks() {
+        let mut list = vec![r(1, 0, Repeat::Biweekly)];
+        take_due(&mut list, 1);
+        assert_eq!(list[0].at, 14 * DAY_MS);
+    }
+
+    #[test]
+    fn monthly_keeps_the_day_and_clamps_to_month_end() {
+        let jan31 = jst()
+            .with_ymd_and_hms(2026, 1, 31, 9, 0, 0)
+            .unwrap()
+            .timestamp_millis();
+        let feb28 = jst()
+            .with_ymd_and_hms(2026, 2, 28, 9, 0, 0)
+            .unwrap()
+            .timestamp_millis();
+        let mar31 = jst()
+            .with_ymd_and_hms(2026, 3, 31, 9, 0, 0)
+            .unwrap()
+            .timestamp_millis();
+        // 1/31 → 2/28（2 月は 28 日まで）→ 3/31（31 日に戻る）
+        assert_eq!(next_monthly(&jst(), jan31, 31, jan31, true), feb28);
+        assert_eq!(next_monthly(&jst(), feb28, 31, feb28, true), mar31);
+    }
+
+    #[test]
+    fn monthly_crosses_the_year() {
+        let dec15 = jst()
+            .with_ymd_and_hms(2026, 12, 15, 8, 0, 0)
+            .unwrap()
+            .timestamp_millis();
+        let jan15 = jst()
+            .with_ymd_and_hms(2027, 1, 15, 8, 0, 0)
+            .unwrap()
+            .timestamp_millis();
+        assert_eq!(next_monthly(&jst(), dec15, 15, dec15, true), jan15);
+    }
+
+    #[test]
+    fn monthly_take_due_fires_once_after_a_long_absence() {
+        let start = jst()
+            .with_ymd_and_hms(2026, 1, 10, 9, 0, 0)
+            .unwrap()
+            .timestamp_millis();
+        let now = jst()
+            .with_ymd_and_hms(2026, 4, 20, 12, 0, 0)
+            .unwrap()
+            .timestamp_millis();
+        let mut list = vec![Reminder {
+            days: 10,
+            ..r(1, start, Repeat::Monthly)
+        }];
+        assert_eq!(take_due_in(&jst(), &mut list, now).len(), 1);
+        let next = jst()
+            .with_ymd_and_hms(2026, 5, 10, 9, 0, 0)
+            .unwrap()
+            .timestamp_millis();
+        assert_eq!(list[0].at, next);
     }
 }

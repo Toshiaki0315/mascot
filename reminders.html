@@ -36,6 +36,8 @@
             <option value="daily">毎日</option>
             <option value="weekdays">平日（月〜金）</option>
             <option value="weekly">毎週</option>
+            <option value="biweekly">隔週</option>
+            <option value="monthly">毎月</option>
             <option value="days">曜日を選ぶ</option>
           </select>
         </label>
@@ -55,7 +57,16 @@
         </div>
       </form>
 
-      <h2 id="list-title">登録済み</h2>
+      <div class="list-head">
+        <h2 id="list-title">登録済み</h2>
+        <label class="sort">
+          並べ方
+          <select id="sort">
+            <option value="time">日時順</option>
+            <option value="added">登録順</option>
+          </select>
+        </label>
+      </div>
       <ul id="list"></ul>
       <p id="empty">リマインダーはありません</p>
     </main>

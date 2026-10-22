@@ -129,10 +129,28 @@ select:focus {
   font-size: 13px;
 }
 
-h2 {
+.list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin: 20px 0 8px;
   padding-top: 14px;
   border-top: 1px solid var(--line);
+}
+.sort {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.sort select {
+  padding: 2px 6px;
+  font-size: 12px;
+}
+h2 {
+  margin: 0;
   font-size: 13px;
   color: var(--muted);
 }

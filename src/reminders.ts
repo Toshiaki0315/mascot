@@ -1,13 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
-
-type Repeat = "once" | "daily" | "weekly" | "days";
-// 画面の選択肢。「平日」は曜日指定（月〜金）として保存する
-type RepeatChoice = Repeat | "weekdays";
-type Reminder = { id: number; text: string; at: number; repeat: Repeat; days: number };
-
-/// 曜日のビット（月曜 = bit 0 … 日曜 = bit 6）。Rust 側の reminder.rs と同じ
-const WEEKDAYS = 0b001_1111;
-const DAY_NAMES = ["月", "火", "水", "木", "金", "土", "日"];
+import {
+  formatWhen,
+  sortReminders,
+  toChoice,
+  toSaved,
+  type Reminder,
+  type RepeatChoice,
+  type SortOrder,
+} from "./reminder-format";
 
 const form = document.querySelector<HTMLFormElement>("#form")!;
 const textInput = document.querySelector<HTMLInputElement>("#text")!;
@@ -21,6 +21,7 @@ const addButton = document.querySelector<HTMLButtonElement>("#add")!;
 const cancelButton = document.querySelector<HTMLButtonElement>("#cancel")!;
 const listEl = document.querySelector<HTMLUListElement>("#list")!;
 const emptyEl = document.querySelector<HTMLElement>("#empty")!;
+const sortSelect = document.querySelector<HTMLSelectElement>("#sort")!;
 
 /// 編集中のリマインダーの ID（新規登録なら null）
 let editingId: number | null = null;
@@ -32,27 +33,6 @@ const pad = (n: number) => String(n).padStart(2, "0");
 function setWhen(date: Date) {
   dateInput.value = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
   timeInput.value = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-function daysLabel(mask: number): string {
-  if (mask === WEEKDAYS) return "平日";
-  return DAY_NAMES.filter((_, i) => mask & (1 << i)).join("");
-}
-
-function formatWhen(r: Reminder): string {
-  const d = new Date(r.at);
-  const date = `${d.getMonth() + 1}/${d.getDate()}`;
-  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  switch (r.repeat) {
-    case "once":
-      return `${date} ${time}`;
-    case "daily":
-      return `毎日 ${time}（次は ${date}）`;
-    case "weekly":
-      return `毎週${DAY_NAMES[(d.getDay() + 6) % 7]}曜 ${time}（次は ${date}）`;
-    case "days":
-      return `${daysLabel(r.days)} ${time}（次は ${date}）`;
-  }
 }
 
 function selectedDays(): number {
@@ -70,7 +50,7 @@ function syncDaysBox() {
 function render(list: Reminder[]) {
   current = list;
   listEl.replaceChildren(
-    ...list.map((r) => {
+    ...sortReminders(list, sortSelect.value as SortOrder).map((r) => {
       const li = document.createElement("li");
       li.classList.toggle("editing", r.id === editingId);
       const text = document.createElement("span");
@@ -118,7 +98,7 @@ function startEdit(r: Reminder) {
   editingId = r.id;
   textInput.value = r.text;
   setWhen(new Date(r.at));
-  repeatSelect.value = r.repeat === "days" && r.days === WEEKDAYS ? "weekdays" : r.repeat;
+  repeatSelect.value = toChoice(r);
   setDays(r.days);
   syncDaysBox();
   errorEl.textContent = "";
@@ -144,6 +124,14 @@ for (const button of document.querySelectorAll<HTMLButtonElement>(".quick button
 }
 
 repeatSelect.addEventListener("change", syncDaysBox);
+sortSelect.addEventListener("change", () => {
+  try {
+    localStorage.setItem("reminder-sort", sortSelect.value);
+  } catch {
+    // 保存できなくても、並べ方が次回に戻るだけ
+  }
+  render(current);
+});
 cancelButton.addEventListener("click", stopEdit);
 
 form.addEventListener("submit", async (e) => {
@@ -154,9 +142,7 @@ form.addEventListener("submit", async (e) => {
     errorEl.textContent = "日付と時刻を入力してください";
     return;
   }
-  const choice = repeatSelect.value as RepeatChoice;
-  const repeat: Repeat = choice === "weekdays" ? "days" : choice;
-  const days = choice === "weekdays" ? WEEKDAYS : choice === "days" ? selectedDays() : 0;
+  const { repeat, days } = toSaved(repeatSelect.value as RepeatChoice, selectedDays());
   try {
     const args = { text: textInput.value, at, repeat, days };
     const list =
@@ -174,6 +160,12 @@ form.addEventListener("submit", async (e) => {
   }
 });
 
+try {
+  const saved = localStorage.getItem("reminder-sort");
+  if (saved === "time" || saved === "added") sortSelect.value = saved;
+} catch {
+  // 読めなければ日時順
+}
 resetForm();
 render(await invoke<Reminder[]>("list_reminders"));
 textInput.focus();
