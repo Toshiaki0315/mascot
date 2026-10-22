@@ -13,7 +13,7 @@ use tauri::{
 use tauri_plugin_autostart::ManagerExt;
 
 use crate::{
-    about, apply_scale, emit_settings, notes, pomodoro,
+    about, apply_scale, bubble, emit_settings, notes, pomodoro,
     reminder::{self, Reminder, Repeat},
     save_current_position,
     settings::{Character, Speed, SCALES},
@@ -559,6 +559,10 @@ fn on_menu(app: &AppHandle, id: &str) {
         }
         "toggle" => {
             let visible = !window.is_visible().unwrap_or(false);
+            if !visible {
+                // 出していたふきだしも一緒にしまう
+                bubble::dismiss(app);
+            }
             let _ = if visible {
                 window.show()
             } else {

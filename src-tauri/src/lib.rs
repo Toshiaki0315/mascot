@@ -1,4 +1,5 @@
 mod about;
+mod bubble;
 mod geometry;
 mod notes;
 mod physics;
@@ -250,6 +251,10 @@ pub fn run() {
             frontend_ready,
             start_drag,
             show_context_menu,
+            bubble::show_bubble,
+            bubble::bubble_resize,
+            bubble::hide_bubble,
+            bubble::bubble_action,
             reminder::list_reminders,
             reminder::add_reminder,
             reminder::snooze_reminder,
@@ -297,6 +302,10 @@ pub fn run() {
             restore(&window, &shared);
 
             spawn_cursor_watcher(app.handle().clone(), shared.clone());
+            let bubble_state = Arc::new(bubble::BubbleState::new());
+            app.manage(bubble_state.clone());
+            bubble::create(app.handle())?;
+            bubble::spawn_follower(app.handle().clone(), shared.clone(), bubble_state);
             reminder::spawn_scheduler(app.handle().clone(), shared.clone());
             wander::spawn(app.handle().clone(), shared);
             Ok(())

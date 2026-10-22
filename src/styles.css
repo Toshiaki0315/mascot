@@ -254,93 +254,6 @@ body {
   visibility: hidden;
 }
 
-/* ---- ふきだし ---- */
-
-#bubble {
-  position: absolute;
-  top: calc(var(--u) * 4);
-  left: 50%;
-  /* left: 50% のままだと幅が右半分に制限されるので、文字に合わせた幅にする */
-  width: max-content;
-  max-width: calc(var(--u) * 136);
-  box-sizing: border-box;
-  padding: calc(var(--u) * 3) calc(var(--u) * 6);
-  transform: translateX(-50%);
-  background: #fffdf6;
-  color: #3b2a1a;
-  border: calc(var(--u) * 2) solid #5a3a1f;
-  /* 角丸にせず、太い枠と影でドット絵風にする */
-  border-radius: 0;
-  box-shadow:
-    calc(var(--u) * 2) calc(var(--u) * 2) 0 rgba(0, 0, 0, 0.18);
-  font: 600 calc(var(--u) * 10) / 1.35 -apple-system, "Hiragino Sans", sans-serif;
-  text-align: center;
-  white-space: normal;
-  word-break: keep-all;
-  overflow-wrap: anywhere;
-  pointer-events: none;
-  visibility: hidden;
-}
-#bubble.show {
-  visibility: visible;
-  animation: pop 0.24s steps(2) 1;
-}
-/* リマインダー：大きめの字にする。短い文ほど大きく、長い文（30 文字）でもキャラクターの頭に少し
-   かかる程度に収める。クリックして閉じられるよう、ふきだしの上でもマウスを受け付ける */
-#bubble.reminder {
-  max-width: calc(var(--u) * 140);
-  padding: calc(var(--u) * 5) calc(var(--u) * 8);
-  font-size: calc(var(--u) * 12);
-  font-weight: 700;
-  border-color: #d9692a;
-  background: #fff3e0;
-}
-#bubble.reminder.r-lg {
-  font-size: calc(var(--u) * 22);
-}
-#bubble.reminder.r-md {
-  font-size: calc(var(--u) * 17);
-}
-/* 文字の下の「あとで」「閉じる」 */
-#bubble.reminder .actions {
-  display: flex;
-  justify-content: center;
-  gap: calc(var(--u) * 6);
-  margin-top: calc(var(--u) * 3);
-  font-size: calc(var(--u) * 9);
-  font-weight: 600;
-  color: #8a5a2a;
-}
-#bubble.reminder .action {
-  white-space: nowrap;
-  padding: calc(var(--u) * 1) calc(var(--u) * 4);
-  border: calc(var(--u) * 1) solid #d9692a;
-  background: #fffdf6;
-}
-#bubble.reminder .action:hover {
-  background: #d9692a;
-  color: #fff;
-}
-#bubble.reminder.show {
-  pointer-events: auto;
-  cursor: pointer;
-}
-#bubble.reminder::after {
-  background: #d9692a;
-}
-/* しっぽ */
-#bubble::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  bottom: calc(var(--u) * -7);
-  width: calc(var(--u) * 6);
-  height: calc(var(--u) * 5);
-  transform: translateX(-50%);
-  background: #5a3a1f;
-  clip-path: polygon(0 0, 100% 0, 50% 100%);
-}
-
 /* ---- キーフレーム ---- */
 
 @keyframes bounce {
@@ -382,8 +295,4 @@ body {
   35% { transform: scale(0.94, 1.12); }
   75% { transform: scale(1, 1.06); }
   90% { transform: scale(1, 1); }
-}
-@keyframes pop {
-  0% { transform: translateX(-50%) scale(0.6); }
-  50% { transform: translateX(-50%) scale(1); }
 }

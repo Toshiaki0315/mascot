@@ -3,10 +3,10 @@ import { defineConfig } from "vite";
 // Tauri は固定ポートの dev サーバーを前提とする
 export default defineConfig({
   clearScreen: false,
-  // マスコット本体のほかに、リマインダーの設定ウィンドウのページがある
+  // マスコット本体のほかに、リマインダーの設定ウィンドウと、大きなふきだしのページがある
   build: {
     rollupOptions: {
-      input: { main: "index.html", reminders: "reminders.html" },
+      input: { main: "index.html", reminders: "reminders.html", bubble: "bubble.html" },
     },
   },
   server: {

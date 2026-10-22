@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Bubble, hourLine, lineFor, truncateForBubble, type Occasion } from "./speech";
+import { Bubble, hourLine, lineFor, type Occasion } from "./speech";
 import { CHARACTERS, renderSprite, type Character } from "./sprite";
 import {
   fetchForecastJson,
@@ -22,11 +22,19 @@ type Announce = { text: string; snooze: boolean };
 const pendingReminders: Announce[] = [];
 /// いまふきだしに出しているリマインダー（全文。「5 分後」を押したときに使う）
 let currentReminder: Announce = { text: "", snooze: false };
+/// 大きなふきだし（専用のウィンドウ）を出している間か
+let reminderShown = false;
+/// 放っておいたふきだしを自動で閉じるまでの時間
+const REMIND_MS = 5 * 60_000;
+let remindTimer: number | undefined;
 
 const stage = document.querySelector<HTMLElement>("#stage")!;
 const mascot = document.querySelector<SVGSVGElement>("#mascot")!;
-const bubbleEl = document.querySelector<HTMLElement>("#bubble")!;
-const bubble = new Bubble(bubbleEl);
+// ふつうのおしゃべりも、大きなふきだし（専用のウィンドウ）に出す
+const bubble = new Bubble(
+  (text) => void invoke("show_bubble", { text, snooze: false, chat: true }),
+  () => void invoke("hide_bubble"),
+);
 
 let character: Character = "tora";
 let chatty = true;
@@ -39,29 +47,34 @@ let sleeping = false;
 let suppressed = false;
 
 function say(occasion: Occasion) {
-  if (!chatty || suppressed) return;
+  if (!chatty || suppressed || reminderShown) return;
   const line = lineFor(occasion, character);
   if (line) bubble.say(line);
 }
 
-// リマインダーを 1 件ずつ、クリックされたら次を出す。
+// リマインダーを 1 件ずつ、大きなふきだし（専用のウィンドウ）に出す。閉じられたら次を出す。
 // 全画面アプリの上で隠れている間は出さず、戻ってから出す
 function showNextReminder() {
-  if (suppressed || bubble.isPinned) return;
+  if (suppressed || reminderShown) return;
   const next = pendingReminders.shift();
   if (next === undefined) return;
   currentReminder = next;
+  reminderShown = true;
+  bubble.hide();
   rejoice();
-  bubble.remind(truncateForBubble(next.text), next.snooze);
+  void invoke("show_bubble", { text: next.text, snooze: next.snooze, chat: false });
+  remindTimer = window.setTimeout(() => closeReminder(false), REMIND_MS);
 }
 
 // ふきだしを閉じて、次のリマインダーがあれば出す。snooze なら 5 分後にもう一度知らせる
 function closeReminder(snooze: boolean) {
-  if (!bubble.isPinned) return;
+  if (!reminderShown) return;
+  reminderShown = false;
+  clearTimeout(remindTimer);
   if (snooze && currentReminder.snooze) {
     void invoke("snooze_reminder", { text: currentReminder.text });
   }
-  bubble.dismiss();
+  void invoke("hide_bubble");
   showNextReminder();
 }
 
@@ -72,25 +85,14 @@ function hitTest(x: number, y: number): boolean {
     return false;
   }
   const el = document.elementFromPoint(x, y);
-  return isMascotHit(el) || isReminderBubble(el);
-}
-
-function isMascotHit(el: Element | null): boolean {
   return el instanceof SVGElement && el.classList.contains("hit");
-}
-
-// リマインダーのふきだしの上か（クリックして閉じられる）
-function isReminderBubble(el: Element | null): boolean {
-  return el instanceof HTMLElement && el.closest("#bubble.reminder") !== null;
 }
 
 async function updateHover(x: number, y: number) {
   const hit = hitTest(x, y);
   if (hit === overMascot) return;
   overMascot = hit;
-  // ふきだしの上では、キャラクターは反応させない
-  const overBody = hit && isMascotHit(document.elementFromPoint(x, y));
-  mascot.classList.toggle("hover", overBody);
+  mascot.classList.toggle("hover", hit);
   if (hit) cancelEmote();
   // 不透明部分に乗ったらクリックを受け付け、離れたら再び透過する
   await invoke("set_click_through", { ignore: !hit });
@@ -162,7 +164,9 @@ window.setInterval(() => {
   const now = new Date();
   if (now.getMinutes() !== 0 || now.getHours() === lastHour) return;
   lastHour = now.getHours();
-  if (chatty && !suppressed && !sleeping) bubble.say(hourLine(lastHour, character));
+  if (chatty && !suppressed && !sleeping && !reminderShown) {
+    bubble.say(hourLine(lastHour, character));
+  }
 }, 20_000);
 
 // ---- Rust 側からの通知 ----
@@ -216,10 +220,14 @@ await listen<FlagPayload>("mascot-suppress", (e) => {
   stage.classList.toggle("suppressed", suppressed);
   if (suppressed) {
     // 姿が見えなくなるので、出しかけのリマインダーは通知センターへ回す
-    for (const item of [bubble.isPinned ? currentReminder : null, ...pendingReminders.splice(0)]) {
+    for (const item of [reminderShown ? currentReminder : null, ...pendingReminders.splice(0)]) {
       if (item) void invoke("notify_reminder", { text: item.text });
     }
-    bubble.dismiss();
+    if (reminderShown) {
+      reminderShown = false;
+      clearTimeout(remindTimer);
+      void invoke("hide_bubble");
+    }
     // Rust 側でクリックスルーに戻しているので、こちらの状態も合わせる
     overMascot = false;
     mascot.classList.remove("hover");
@@ -250,7 +258,7 @@ await listen<Announce>("mascot-reminder", (e) => {
 
 // コピーしたよ、など短いひとこと（おしゃべりの設定に関係なく出す）
 await listen<string>("mascot-toast", (e) => {
-  if (!suppressed && !sleeping) bubble.say(e.payload);
+  if (!suppressed && !sleeping && !reminderShown) bubble.say(e.payload);
 });
 
 // ---- 天気 ----
@@ -323,10 +331,12 @@ function spin() {
   say("spin");
 }
 
-// リマインダーのふきだしをクリックしたら消して、次のリマインダーがあれば出す
-bubbleEl.addEventListener("click", (e) => {
-  const action = (e.target as HTMLElement).closest<HTMLElement>("[data-action]")?.dataset.action;
-  closeReminder(action === "snooze");
+// 大きなふきだしのボタンやクリック（専用のウィンドウから Rust 経由で届く）。
+// マスコットを隠したときなど、Rust 側で閉じたときも "close" で届く
+await listen<string>("reminder-action", (e) => {
+  // リマインダーを出していなければ、ふつうのおしゃべりのクリック
+  if (reminderShown) closeReminder(e.payload === "snooze");
+  else bubble.hide();
 });
 
 // 右クリックで、トレイと同じメニューをその場に出す
@@ -359,7 +369,7 @@ window.addEventListener("mousemove", (e) => {
 window.addEventListener("mouseup", (e) => {
   if (pressAt && e.button === 0) {
     clearTimeout(clickTimer);
-    if (bubble.isPinned) {
+    if (reminderShown) {
       // キャラクターをクリックしても、リマインダーを閉じられる
       closeReminder(false);
     } else if (e.detail >= 2) {

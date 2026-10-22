@@ -43,7 +43,7 @@ export function parseForecast(json: unknown): Forecast {
   return { code, max: Math.round(max), min: Math.round(min), rain: Math.round(rain ?? 0) };
 }
 
-/// ふきだしに出す文（30 文字以内に収まる長さ）
+/// ふきだしに出す文（24 文字以内に収まる長さ）
 export function weatherMessage(city: string, f: Forecast): string {
   return `${city}：${describeWeather(f.code)} ${f.max}/${f.min}℃ 雨${f.rain}%`;
 }

@@ -41,10 +41,10 @@ test("形式が違う JSON は例外にする", () => {
   assert.throws(() => parseForecast(null));
 });
 
-test("ふきだしの文は 30 文字以内", () => {
+test("ふきだしの文は短くまとまる（ふつうの地名なら 24 文字以内）", () => {
   const message = weatherMessage("東京", parseForecast(sample));
   assert.equal(message, "東京：雨 24/16℃ 雨70%");
-  assert.ok([...weatherMessage("サンフランシスコ", { code: 95, max: -10, min: -20, rain: 100 })].length <= 30);
+  assert.ok([...weatherMessage("鹿児島", { code: 95, max: -10, min: -20, rain: 100 })].length <= 24);
 });
 
 test("ローカルの日付は YYYY-MM-DD", () => {

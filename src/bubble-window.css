@@ -1,0 +1,83 @@
+/* リマインダーなどの大きなふきだし（専用のウィンドウ）。大きさはマスコットの倍率 --s に合わせる */
+
+html,
+body {
+  margin: 0;
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  font-family: -apple-system, "Hiragino Sans", sans-serif;
+}
+
+:root {
+  --s: 1;
+}
+
+/* 影が切れないよう、まわりに少し余白を取る */
+#wrap {
+  display: inline-block;
+  padding: calc(var(--s) * 3px) calc(var(--s) * 6px) calc(var(--s) * 3px) calc(var(--s) * 3px);
+  cursor: pointer;
+}
+
+#card {
+  width: max-content;
+  max-width: calc(var(--s) * 340px);
+  box-sizing: border-box;
+  padding: calc(var(--s) * 12px) calc(var(--s) * 18px);
+  background: #fff3e0;
+  color: #3b2a1a;
+  border: calc(var(--s) * 4px) solid #d9692a;
+  /* 角丸にせず、太い枠と影でドット絵風にする */
+  border-radius: 0;
+  box-shadow: calc(var(--s) * 4px) calc(var(--s) * 4px) 0 rgba(0, 0, 0, 0.18);
+  font-size: calc(var(--s) * 26px);
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: center;
+  white-space: pre-wrap;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+/* ふつうのおしゃべり：リマインダーより少し小さく、茶色の枠にする（クリックは後ろのアプリへ通す） */
+#card.chat {
+  font-size: calc(var(--s) * 22px);
+  background: #fffdf6;
+  border-color: #5a3a1f;
+}
+#card.chat + #tail {
+  background: #5a3a1f;
+}
+
+/* しっぽ（マスコットの頭を指す） */
+#tail {
+  width: calc(var(--s) * 18px);
+  height: calc(var(--s) * 12px);
+  margin: calc(var(--s) * -2px) auto 0;
+  background: #d9692a;
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
+.actions {
+  display: flex;
+  justify-content: center;
+  gap: calc(var(--s) * 12px);
+  margin-top: calc(var(--s) * 10px);
+  font-size: calc(var(--s) * 16px);
+  font-weight: 600;
+  color: #8a5a2a;
+}
+
+.action {
+  white-space: nowrap;
+  padding: calc(var(--s) * 3px) calc(var(--s) * 12px);
+  border: calc(var(--s) * 2px) solid #d9692a;
+  background: #fffdf6;
+}
+
+.action:hover {
+  background: #d9692a;
+  color: #fff;
+}

@@ -18,8 +18,6 @@ pub const WINDOW: &str = "reminders";
 const CHECK_INTERVAL: Duration = Duration::from_secs(5);
 /// 登録できる内容の長さ。ふきだしには収まらないぶんは省き、全文は通知センターに出す
 pub const MAX_TEXT_CHARS: usize = 100;
-/// ふきだしに出せる文字数（これを超えたら通知センターにも出す。src/speech.ts の BUBBLE_CHARS と同じ）
-const BUBBLE_CHARS: usize = 30;
 /// 「あとで知らせる」で、もう一度知らせるまでの時間
 const SNOOZE_MS: i64 = 5 * 60 * 1000;
 /// 鳴らす音（macOS 標準）
@@ -417,11 +415,10 @@ struct Announce {
     snooze: bool,
 }
 
-/// マスコットのふきだしで知らせる。
-/// マスコットを非表示にしている間と、ふきだしに収まらない長い内容は、通知センターにも出す
+/// マスコットのふきだしで知らせる。マスコットを非表示にしている間は、通知センターに出す
 pub fn announce(app: &AppHandle, shared: &Shared, text: &str, snooze: bool) {
     let visible = shared.visible.load(Ordering::Relaxed);
-    if !visible || text.chars().count() > BUBBLE_CHARS {
+    if !visible {
         notify(app, text);
     }
     if visible {
