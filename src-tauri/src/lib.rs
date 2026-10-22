@@ -44,7 +44,11 @@ pub(crate) const BASE_HEAD_HEIGHT: f64 = 105.0;
 #[derive(Clone, Copy)]
 pub(crate) struct Geometry {
     pub rect: Rect,
-    pub scale_factor: f64,
+    /// cursor_position() の物理ピクセルをポイントに直す倍率。
+    /// tao はカーソル座標を「メイン画面」の倍率で物理ピクセルにするので、
+    /// マスコットのいる画面の倍率ではなく、メイン画面の倍率で割る
+    /// （倍率の違う外付けディスプレイにいると、カーソルの位置がずれて操作できなくなる）
+    pub cursor_scale: f64,
 }
 
 /// スレッド間で共有する状態
@@ -157,8 +161,8 @@ fn spawn_cursor_watcher(app: AppHandle, shared: Arc<Shared>) {
             };
             let rect = geometry.rect;
             let payload = CursorPayload {
-                x: cursor.x / geometry.scale_factor - rect.x,
-                y: cursor.y / geometry.scale_factor - rect.y,
+                x: cursor.x / geometry.cursor_scale - rect.x,
+                y: cursor.y / geometry.cursor_scale - rect.y,
             };
             let (cx, cy) = (rect.w / 2.0, rect.h / 2.0);
             let now_near =

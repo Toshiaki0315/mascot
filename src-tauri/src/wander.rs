@@ -254,7 +254,8 @@ struct Brain {
     /// 歩くたびにメインスレッドへ問い合わせると CPU を食うので覚えておく
     pos: Option<(f64, f64)>,
     size: Option<(f64, f64)>,
-    scale_factor: f64,
+    /// カーソル座標の換算に使う、メイン画面の倍率（Geometry::cursor_scale）
+    cursor_scale: f64,
     idle_until: Instant,
     moving: bool,
     flying: bool,
@@ -279,7 +280,7 @@ impl Brain {
             target: None,
             pos: None,
             size: None,
-            scale_factor: 1.0,
+            cursor_scale: 1.0,
             idle_until: Instant::now() + Duration::from_millis(IDLE_MIN_MS),
             moving: false,
             flying: false,
@@ -322,7 +323,7 @@ impl Brain {
     fn publish(&self, rect: Rect) {
         self.shared.set_geometry(Geometry {
             rect,
-            scale_factor: self.scale_factor,
+            cursor_scale: self.cursor_scale,
         });
     }
 
@@ -536,9 +537,9 @@ impl Brain {
 
     /// 画面の抜き差し・全画面アプリ・乗っている窓の様子を確認する
     fn check_windows(&mut self) {
-        // 画面をまたぐと倍率が変わり、大きさの変更もありうるので、ここで読み直す
-        if let Ok(scale_factor) = self.window.scale_factor() {
-            self.scale_factor = scale_factor;
+        // ディスプレイの抜き差しや設定の変更で倍率が変わりうるので、ここで読み直す
+        if let Some(primary) = self.window.primary_monitor().ok().flatten() {
+            self.cursor_scale = primary.scale_factor();
         }
         self.size = None;
         if let Some(pos) = geometry::bring_back_if_lost(&self.window) {
