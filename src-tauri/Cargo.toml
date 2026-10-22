@@ -1,6 +1,6 @@
 [package]
 name = "desktop-mascot"
-version = "0.7.0"
+version = "0.7.5"
 description = "Desktop mascot for macOS"
 edition = "2021"
 
