@@ -3,7 +3,17 @@
 export type Repeat = "once" | "daily" | "weekly" | "biweekly" | "monthly" | "days";
 /// 画面の選択肢。「平日」は曜日指定（月〜金）として保存する
 export type RepeatChoice = Repeat | "weekdays";
-export type Reminder = { id: number; text: string; at: number; repeat: Repeat; days: number };
+export type Reminder = {
+  id: number;
+  text: string;
+  at: number;
+  repeat: Repeat;
+  days: number;
+  /// 何分前に先に知らせるか（0 なら知らせない）
+  lead_min: number;
+  /// カウントダウンのタイマー
+  timer: boolean;
+};
 
 /// 曜日のビット（月曜 = bit 0 … 日曜 = bit 6）。Rust 側の reminder.rs と同じ
 export const WEEKDAYS = 0b001_1111;
@@ -40,6 +50,13 @@ export function formatWhen(r: Reminder): string {
     case "days":
       return `${daysLabel(r.days)} ${time}（次は ${date}）`;
   }
+}
+
+/// 事前に知らせるときの、一覧に添える文（なければ空）
+export function formatLead(minutes: number): string {
+  if (minutes <= 0) return "";
+  if (minutes % 60 === 0) return `${minutes / 60} 時間前にも通知`;
+  return `${minutes} 分前にも通知`;
 }
 
 /// 画面の選択肢から、保存する くり返し と 曜日のビットを決める

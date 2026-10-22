@@ -1,11 +1,14 @@
 mod about;
 mod geometry;
+mod notes;
 mod physics;
+mod pomodoro;
 mod reminder;
 mod settings;
 mod system;
 mod tray;
 mod wander;
+mod weather;
 
 use std::{
     sync::{
@@ -252,6 +255,19 @@ pub fn run() {
             reminder::snooze_reminder,
             reminder::notify_reminder,
             reminder::update_reminder,
+            reminder::start_timer,
+            pomodoro::pomodoro_status,
+            pomodoro::pomodoro_start,
+            pomodoro::pomodoro_stop,
+            pomodoro::set_pomodoro_config,
+            notes::list_notes,
+            notes::add_note,
+            notes::delete_note,
+            notes::copy_note_to_clipboard,
+            notes::save_clipboard_note,
+            weather::get_weather_settings,
+            weather::set_weather_settings,
+            weather::mark_weather_shown,
             reminder::delete_reminder
         ])
         .setup(|app| {

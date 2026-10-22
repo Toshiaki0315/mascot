@@ -85,8 +85,9 @@ export class Bubble {
   }
 
   /// リマインダーを出す。ふつうのおしゃべりや hide() では消えない。
-  /// 文字の下に「あとで」「閉じる」のボタンを付ける（押したかどうかは data-action で見分ける）
-  remind(text: string) {
+  /// 文字の下に「5 分後」「閉じる」のボタンを付ける（押したかどうかは data-action で見分ける）。
+  /// `snooze` が false なら、「5 分後」は付けない（タイマーや天気など、あとで知らせ直す意味がないもの）
+  remind(text: string, snooze = true) {
     this.pinned = true;
     // 短い文ほど大きな字で出す
     const length = [...text].length;
@@ -97,7 +98,8 @@ export class Bubble {
     message.textContent = text;
     const actions = document.createElement("div");
     actions.className = "actions";
-    for (const [action, label] of [["snooze", "5 分後"], ["close", "閉じる"]]) {
+    const buttons = snooze ? [["snooze", "5 分後"], ["close", "閉じる"]] : [["close", "閉じる"]];
+    for (const [action, label] of buttons) {
       const button = document.createElement("span");
       button.className = "action";
       button.dataset.action = action;

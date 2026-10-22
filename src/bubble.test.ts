@@ -83,3 +83,11 @@ test("放っておいたリマインダーは 5 分で消える", () => {
   assert.ok(!bubble.isPinned);
   mock.timers.reset();
 });
+
+test("snooze を false にすると「5 分後」のボタンは付かない", () => {
+  const { el, bubble } = setup();
+  bubble.remind("天気", false);
+  const actions = [...el.querySelectorAll("[data-action]")].map((b) => b.getAttribute("data-action"));
+  assert.deepEqual(actions, ["close"]);
+  mock.timers.reset();
+});

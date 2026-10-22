@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_notification::NotificationExt;
 
-use crate::{about, tray, Shared, MAIN_WINDOW};
+use crate::{about, pomodoro, tray, Shared, MAIN_WINDOW};
 
 pub const WINDOW: &str = "reminders";
 /// 時刻になったかを調べる間隔
@@ -26,6 +26,8 @@ const SNOOZE_MS: i64 = 5 * 60 * 1000;
 const SOUND_FILE: &str = "/System/Library/Sounds/Glass.aiff";
 /// 登録できる件数
 const MAX_REMINDERS: usize = 100;
+/// タイマーの最長（分）
+const MAX_TIMER_MIN: u32 = 24 * 60;
 
 const DAY_MS: i64 = 24 * 60 * 60 * 1000;
 
@@ -68,6 +70,30 @@ pub struct Reminder {
     /// repeat が Days のときの曜日のビット、Monthly のときの日付（古い設定ファイルにはない）
     #[serde(default)]
     pub days: u8,
+    /// 何分前に先に知らせるか（0 なら知らせない）
+    #[serde(default)]
+    pub lead_min: u32,
+    /// 事前に知らせた時刻（`at` の値）。同じ予定で 2 度知らせないための記録
+    #[serde(default)]
+    pub lead_sent: i64,
+    /// カウントダウンのタイマー（「タイマー」の一覧に出し、リマインダーの一覧には出さない）
+    #[serde(default)]
+    pub timer: bool,
+}
+
+impl Reminder {
+    pub fn new(id: u64, text: String, at: i64, repeat: Repeat, days: u8) -> Self {
+        Self {
+            id,
+            text,
+            at,
+            repeat,
+            days,
+            lead_min: 0,
+            lead_sent: 0,
+            timer: false,
+        }
+    }
 }
 
 /// `at` と同じ時刻（その地域の時計で）で、`mask` の曜日にあたる、`now` より後の最初の日時。
@@ -192,6 +218,14 @@ pub fn list_reminders(shared: State<Arc<Shared>>) -> Vec<Reminder> {
     sorted(shared.store.get().reminders)
 }
 
+/// 事前に知らせる時間は、最長 1 日前まで
+fn check_lead(lead_min: u32) -> Result<(), String> {
+    if lead_min > 24 * 60 {
+        return Err("事前に知らせる時間は 1 日前までにしてください".into());
+    }
+    Ok(())
+}
+
 /// 登録・編集の入力を確かめて、保存する値（内容、最初の日時、曜日）にする
 fn validate(text: &str, at: i64, repeat: Repeat, days: u8) -> Result<(String, i64, u8), String> {
     let text = text.trim().to_string();
@@ -232,8 +266,10 @@ pub fn add_reminder(
     at: i64,
     repeat: Repeat,
     days: u8,
+    lead_min: u32,
 ) -> Result<Vec<Reminder>, String> {
     let (text, at, days) = validate(&text, at, repeat, days)?;
+    check_lead(lead_min)?;
     let mut result = Err("リマインダーが多すぎます".to_string());
     shared.store.update(|s| {
         if s.reminders.len() >= MAX_REMINDERS {
@@ -241,11 +277,8 @@ pub fn add_reminder(
         }
         let id = s.reminders.iter().map(|r| r.id).max().unwrap_or(0) + 1;
         s.reminders.push(Reminder {
-            id,
-            text,
-            at,
-            repeat,
-            days,
+            lead_min,
+            ..Reminder::new(id, text, at, repeat, days)
         });
         result = Ok(sorted(s.reminders.clone()));
     });
@@ -253,6 +286,8 @@ pub fn add_reminder(
     result
 }
 
+// Tauri のコマンドは、引数の名前でフロントエンドから値を受け取るので、数が多くなる
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub fn update_reminder(
     app: AppHandle,
@@ -262,17 +297,16 @@ pub fn update_reminder(
     at: i64,
     repeat: Repeat,
     days: u8,
+    lead_min: u32,
 ) -> Result<Vec<Reminder>, String> {
     let (text, at, days) = validate(&text, at, repeat, days)?;
+    check_lead(lead_min)?;
     let mut found = false;
     shared.store.update(|s| {
         if let Some(r) = s.reminders.iter_mut().find(|r| r.id == id) {
             *r = Reminder {
-                id,
-                text,
-                at,
-                repeat,
-                days,
+                lead_min,
+                ..Reminder::new(id, text, at, repeat, days)
             };
             found = true;
         }
@@ -290,15 +324,61 @@ pub fn update_reminder(
 pub fn snooze_reminder(app: AppHandle, shared: State<Arc<Shared>>, text: String) {
     shared.store.update(|s| {
         let id = s.reminders.iter().map(|r| r.id).max().unwrap_or(0) + 1;
-        s.reminders.push(Reminder {
+        s.reminders.push(Reminder::new(
             id,
             text,
-            at: now_ms() + SNOOZE_MS,
-            repeat: Repeat::Once,
-            days: 0,
-        });
+            now_ms() + SNOOZE_MS,
+            Repeat::Once,
+            0,
+        ));
     });
     tray::refresh_reminders(&app);
+}
+
+/// カウントダウンのタイマーを始める（時間が来たら、ふきだしと通知で知らせる）
+pub fn add_timer(
+    app: &AppHandle,
+    shared: &Shared,
+    minutes: u32,
+    label: &str,
+) -> Result<Vec<Reminder>, String> {
+    if !(1..=MAX_TIMER_MIN).contains(&minutes) {
+        return Err(format!("タイマーは 1〜{MAX_TIMER_MIN} 分にしてください"));
+    }
+    let label = label.trim();
+    if label.chars().count() > MAX_TEXT_CHARS {
+        return Err(format!("名前は {MAX_TEXT_CHARS} 文字以内にしてください"));
+    }
+    let text = if label.is_empty() {
+        format!("{minutes} 分のタイマーが終わりました")
+    } else {
+        format!("{label}：時間です")
+    };
+    shared.store.update(|s| {
+        let id = s.reminders.iter().map(|r| r.id).max().unwrap_or(0) + 1;
+        s.reminders.push(Reminder {
+            timer: true,
+            ..Reminder::new(
+                id,
+                text,
+                now_ms() + i64::from(minutes) * 60_000,
+                Repeat::Once,
+                0,
+            )
+        });
+    });
+    tray::refresh_timers(app);
+    Ok(sorted(shared.store.get().reminders))
+}
+
+#[tauri::command]
+pub fn start_timer(
+    app: AppHandle,
+    shared: State<Arc<Shared>>,
+    minutes: u32,
+    label: String,
+) -> Result<Vec<Reminder>, String> {
+    add_timer(&app, &shared, minutes, &label)
 }
 
 /// マスコットが見えない間（全画面アプリの上など）に、フロントエンドから呼ばれる
@@ -329,50 +409,115 @@ fn play_sound() {
     let _ = std::process::Command::new("afplay").arg(SOUND_FILE).spawn();
 }
 
-/// 時刻になったリマインダーをマスコットのふきだしへ送る。
+/// ふきだしへ送る知らせ
+#[derive(Clone, Serialize)]
+struct Announce {
+    text: String,
+    /// 「5 分後」のボタンを付けるか
+    snooze: bool,
+}
+
+/// マスコットのふきだしで知らせる。
 /// マスコットを非表示にしている間と、ふきだしに収まらない長い内容は、通知センターにも出す
+pub fn announce(app: &AppHandle, shared: &Shared, text: &str, snooze: bool) {
+    let visible = shared.visible.load(Ordering::Relaxed);
+    if !visible || text.chars().count() > BUBBLE_CHARS {
+        notify(app, text);
+    }
+    if visible {
+        if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
+            let _ = window.emit(
+                "mascot-reminder",
+                Announce {
+                    text: text.to_string(),
+                    snooze,
+                },
+            );
+        }
+    }
+}
+
+/// 短いひとことを、ふつうのふきだしで出す（コピーしたよ、など）。見えない間は何もしない
+pub fn toast(app: &AppHandle, text: &str) {
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
+        let _ = window.emit("mascot-toast", text);
+    }
+}
+
+/// 事前に知らせる時刻になったリマインダーを探して、知らせた印を付ける
+fn take_leads(reminders: &mut [Reminder], now: i64) -> Vec<String> {
+    let mut texts = Vec::new();
+    for r in reminders.iter_mut() {
+        let lead_at = r.at - i64::from(r.lead_min) * 60_000;
+        if r.lead_min > 0 && !r.timer && r.lead_sent != r.at && now >= lead_at && now < r.at {
+            r.lead_sent = r.at;
+            texts.push(format!("あと {} 分：{}", r.lead_min, r.text));
+        }
+    }
+    texts
+}
+
+/// 5 秒ごとに、時刻になったリマインダーとタイマー、事前に知らせるもの、ポモドーロの区間の終わりを調べる
 pub fn spawn_scheduler(app: AppHandle, shared: Arc<Shared>) {
     thread::spawn(move || loop {
         thread::sleep(CHECK_INTERVAL);
         let now = now_ms();
-        if !shared.store.get().reminders.iter().any(|r| r.at <= now) {
+        let mut messages: Vec<(String, bool)> = Vec::new();
+
+        let any_lead = shared
+            .store
+            .get()
+            .reminders
+            .iter()
+            .any(|r| r.lead_min > 0 && !r.timer && r.lead_sent != r.at && now < r.at);
+        if any_lead {
+            let mut leads = Vec::new();
+            shared
+                .store
+                .update(|s| leads = take_leads(&mut s.reminders, now));
+            messages.extend(leads.into_iter().map(|t| (t, false)));
+        }
+
+        if shared.store.get().reminders.iter().any(|r| r.at <= now) {
+            let mut fired = Vec::new();
+            shared
+                .store
+                .update(|s| fired = take_due(&mut s.reminders, now));
+            tray::refresh_reminders(&app);
+            tray::refresh_timers(&app);
+            messages.extend(fired.into_iter().map(|r| (r.text, !r.timer)));
+        }
+
+        if let Some(text) = pomodoro::tick(&app, &shared, now) {
+            messages.push((text, false));
+        }
+
+        if messages.is_empty() {
             continue;
         }
-        let mut fired = Vec::new();
-        shared
-            .store
-            .update(|s| fired = take_due(&mut s.reminders, now));
-        tray::refresh_reminders(&app);
-        let Some(window) = app.get_webview_window(MAIN_WINDOW) else {
-            continue;
-        };
         if shared.store.get().reminder_sound {
             play_sound();
         }
-        let visible = shared.visible.load(Ordering::Relaxed);
-        for r in fired {
-            if !visible || r.text.chars().count() > BUBBLE_CHARS {
-                notify(&app, &r.text);
-            }
-            if visible {
-                let _ = window.emit("mascot-reminder", r.text);
-            }
+        for (text, snooze) in messages {
+            announce(&app, &shared, &text, snooze);
         }
     });
 }
 
-/// リマインダーの設定ウィンドウを開く（開いていれば前面に出す）。メインスレッドから呼ぶこと
-pub fn open_window(app: &AppHandle) {
+/// 設定ウィンドウを開く（開いていれば前面に出す）。`tab` は最初に出す見出し。メインスレッドから呼ぶこと
+pub fn open_window(app: &AppHandle, tab: &str) {
     about::activate_app();
     if let Some(window) = app.get_webview_window(WINDOW) {
         let _ = window.show();
         let _ = window.set_focus();
+        let _ = window.emit("tools-tab", tab);
         return;
     }
-    let window = WebviewWindowBuilder::new(app, WINDOW, WebviewUrl::App("reminders.html".into()))
-        .title("リマインダー")
-        .inner_size(400.0, 560.0)
-        .min_inner_size(340.0, 400.0)
+    let url = format!("reminders.html?tab={tab}");
+    let window = WebviewWindowBuilder::new(app, WINDOW, WebviewUrl::App(url.into()))
+        .title("Desktop Mascot")
+        .inner_size(420.0, 600.0)
+        .min_inner_size(360.0, 420.0)
         .center()
         .always_on_top(true)
         .build();
@@ -386,13 +531,7 @@ mod tests {
     use super::*;
 
     fn r(id: u64, at: i64, repeat: Repeat) -> Reminder {
-        Reminder {
-            id,
-            text: format!("r{id}"),
-            at,
-            repeat,
-            days: 0,
-        }
+        Reminder::new(id, format!("r{id}"), at, repeat, 0)
     }
 
     fn jst() -> chrono::FixedOffset {
@@ -558,5 +697,49 @@ mod tests {
             .unwrap()
             .timestamp_millis();
         assert_eq!(list[0].at, next);
+    }
+
+    #[test]
+    fn lead_notice_fires_once_inside_the_lead_window() {
+        let mut list = vec![Reminder {
+            lead_min: 10,
+            ..r(1, 100 * 60_000, Repeat::Once)
+        }];
+        // 15 分前はまだ
+        assert!(take_leads(&mut list, 85 * 60_000).is_empty());
+        // 10 分前になったら 1 回だけ
+        let texts = take_leads(&mut list, 90 * 60_000);
+        assert_eq!(texts, vec!["あと 10 分：r1".to_string()]);
+        assert!(take_leads(&mut list, 95 * 60_000).is_empty());
+        // 時刻を過ぎたら出さない
+        let mut late = vec![Reminder {
+            lead_min: 10,
+            ..r(2, 100 * 60_000, Repeat::Once)
+        }];
+        assert!(take_leads(&mut late, 100 * 60_000).is_empty());
+    }
+
+    #[test]
+    fn lead_notice_fires_again_for_the_next_repeat() {
+        let day = DAY_MS;
+        let mut list = vec![Reminder {
+            lead_min: 5,
+            ..r(1, 10 * 60_000, Repeat::Daily)
+        }];
+        assert_eq!(take_leads(&mut list, 5 * 60_000).len(), 1);
+        // 翌日の分へ進んだあと（take_due と同じ動き）
+        list[0].at += day;
+        assert!(take_leads(&mut list, day).is_empty());
+        assert_eq!(take_leads(&mut list, day + 5 * 60_000).len(), 1);
+    }
+
+    #[test]
+    fn timers_never_get_lead_notices() {
+        let mut list = vec![Reminder {
+            lead_min: 5,
+            timer: true,
+            ..r(1, 10 * 60_000, Repeat::Once)
+        }];
+        assert!(take_leads(&mut list, 6 * 60_000).is_empty());
     }
 }

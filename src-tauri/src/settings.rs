@@ -4,7 +4,12 @@ use std::{fs, path::PathBuf, sync::Mutex};
 
 use serde::{Deserialize, Serialize};
 
-use crate::reminder::Reminder;
+use crate::{
+    notes::Note,
+    pomodoro::{Pomodoro, PomodoroCfg},
+    reminder::Reminder,
+    weather::WeatherSettings,
+};
 
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -111,6 +116,11 @@ pub struct Settings {
     pub reminders: Vec<Reminder>,
     /// リマインダーの時刻に音を鳴らす
     pub reminder_sound: bool,
+    pub notes: Vec<Note>,
+    /// 動いているポモドーロ（なければ None）
+    pub pomodoro: Option<Pomodoro>,
+    pub pomodoro_cfg: PomodoroCfg,
+    pub weather: WeatherSettings,
 }
 
 impl Default for Settings {
@@ -126,6 +136,10 @@ impl Default for Settings {
             character: Character::Tora,
             reminders: Vec::new(),
             reminder_sound: true,
+            notes: Vec::new(),
+            pomodoro: None,
+            pomodoro_cfg: PomodoroCfg::default(),
+            weather: WeatherSettings::default(),
         }
     }
 }
@@ -216,13 +230,8 @@ mod tests {
         let _ = fs::remove_file(&path);
         let store = Store::load(path.clone());
         store.update(|s| {
-            s.reminders.push(Reminder {
-                id: 1,
-                text: "会議".into(),
-                at: 1234,
-                repeat: Repeat::Daily,
-                days: 0,
-            })
+            s.reminders
+                .push(Reminder::new(1, "会議".into(), 1234, Repeat::Daily, 0))
         });
         let s = Store::load(path).get();
         assert_eq!(s.reminders.len(), 1);

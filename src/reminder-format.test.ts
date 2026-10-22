@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  formatLead,
   formatWhen,
   sortReminders,
   toChoice,
@@ -18,6 +19,8 @@ const r = (patch: Partial<Reminder>): Reminder => ({
   at: MON_9,
   repeat: "once",
   days: 0,
+  lead_min: 0,
+  timer: false,
   ...patch,
 });
 
@@ -77,4 +80,11 @@ test("同じ日時なら登録順", () => {
     sortReminders(list, "time").map((x) => x.id),
     [1, 2],
   );
+});
+
+test("事前に知らせる時間の表示", () => {
+  assert.equal(formatLead(0), "");
+  assert.equal(formatLead(10), "10 分前にも通知");
+  assert.equal(formatLead(60), "1 時間前にも通知");
+  assert.equal(formatLead(120), "2 時間前にも通知");
 });

@@ -3,6 +3,13 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Bubble, hourLine, lineFor, truncateForBubble, type Occasion } from "./speech";
 import { CHARACTERS, renderSprite, type Character } from "./sprite";
+import {
+  fetchForecastJson,
+  localDate,
+  parseForecast,
+  weatherMessage,
+  type WeatherSettings,
+} from "./weather";
 
 type CursorPayload = { x: number; y: number };
 type MovePayload = { moving: boolean; dir: -1 | 0 | 1 };
@@ -11,9 +18,10 @@ type SettingsPayload = { chatty: boolean; character: string };
 type SayPayload = { kind: "break" };
 
 /// 時刻になったリマインダー（表示待ちの列）
-const pendingReminders: string[] = [];
-/// いまふきだしに出しているリマインダーの全文（「あとで」を押したときに使う）
-let currentReminder = "";
+type Announce = { text: string; snooze: boolean };
+const pendingReminders: Announce[] = [];
+/// いまふきだしに出しているリマインダー（全文。「5 分後」を押したときに使う）
+let currentReminder: Announce = { text: "", snooze: false };
 
 const stage = document.querySelector<HTMLElement>("#stage")!;
 const mascot = document.querySelector<SVGSVGElement>("#mascot")!;
@@ -40,17 +48,19 @@ function say(occasion: Occasion) {
 // 全画面アプリの上で隠れている間は出さず、戻ってから出す
 function showNextReminder() {
   if (suppressed || bubble.isPinned) return;
-  const text = pendingReminders.shift();
-  if (text === undefined) return;
-  currentReminder = text;
+  const next = pendingReminders.shift();
+  if (next === undefined) return;
+  currentReminder = next;
   rejoice();
-  bubble.remind(truncateForBubble(text));
+  bubble.remind(truncateForBubble(next.text), next.snooze);
 }
 
 // ふきだしを閉じて、次のリマインダーがあれば出す。snooze なら 5 分後にもう一度知らせる
 function closeReminder(snooze: boolean) {
   if (!bubble.isPinned) return;
-  if (snooze) void invoke("snooze_reminder", { text: currentReminder });
+  if (snooze && currentReminder.snooze) {
+    void invoke("snooze_reminder", { text: currentReminder.text });
+  }
   bubble.dismiss();
   showNextReminder();
 }
@@ -206,8 +216,8 @@ await listen<FlagPayload>("mascot-suppress", (e) => {
   stage.classList.toggle("suppressed", suppressed);
   if (suppressed) {
     // 姿が見えなくなるので、出しかけのリマインダーは通知センターへ回す
-    for (const text of [bubble.isPinned ? currentReminder : null, ...pendingReminders.splice(0)]) {
-      if (text) void invoke("notify_reminder", { text });
+    for (const item of [bubble.isPinned ? currentReminder : null, ...pendingReminders.splice(0)]) {
+      if (item) void invoke("notify_reminder", { text: item.text });
     }
     bubble.dismiss();
     // Rust 側でクリックスルーに戻しているので、こちらの状態も合わせる
@@ -228,15 +238,45 @@ await listen<SettingsPayload>("mascot-settings", (e) => {
   }
 });
 
-await listen<string>("mascot-reminder", (e) => {
+await listen<Announce>("mascot-reminder", (e) => {
   // 全画面アプリの上などで姿が見えない間は、通知センターに出す
   if (suppressed) {
-    void invoke("notify_reminder", { text: e.payload });
+    void invoke("notify_reminder", { text: e.payload.text });
     return;
   }
   pendingReminders.push(e.payload);
   showNextReminder();
 });
+
+// コピーしたよ、など短いひとこと（おしゃべりの設定に関係なく出す）
+await listen<string>("mascot-toast", (e) => {
+  if (!suppressed && !sleeping) bubble.say(e.payload);
+});
+
+// ---- 天気 ----
+
+/// 今日の天気を知らせる。`force` はメニューからの「今日の天気」（時刻や 1 日 1 回の制限を無視する）
+async function checkWeather(force: boolean) {
+  const settings = await invoke<WeatherSettings>("get_weather_settings");
+  const today = localDate(new Date());
+  if (!force && (!settings.enabled || settings.last_date === today || new Date().getHours() < settings.hour)) {
+    return;
+  }
+  if (!settings.city) {
+    if (force) bubble.say("場所を決めてね（リマインダー画面の「天気」）");
+    return;
+  }
+  try {
+    const forecast = parseForecast(await fetchForecastJson(settings.lat, settings.lon));
+    pendingReminders.push({ text: weatherMessage(settings.city, forecast), snooze: false });
+    showNextReminder();
+    if (!force) void invoke("mark_weather_shown", { date: today });
+  } catch {
+    if (force) bubble.say("天気を取得できなかったよ");
+  }
+}
+
+await listen("weather-now", () => void checkWeather(true));
 
 await listen<SayPayload>("mascot-say", (e) => {
   say(e.payload.kind);
@@ -244,6 +284,10 @@ await listen<SayPayload>("mascot-say", (e) => {
 
 // 受け取りの準備ができたので、起動直後に送られて取りこぼした状態を送り直してもらう
 await invoke("frontend_ready");
+
+// 朝の天気：起動直後と、そのあと 10 分ごとに確認する（知らせるのは 1 日 1 回）
+void checkWeather(false);
+window.setInterval(() => void checkWeather(false), 10 * 60_000);
 
 // ---- クリック・ダブルクリック・ドラッグ ----
 

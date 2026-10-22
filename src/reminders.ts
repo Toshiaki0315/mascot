@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
+  formatLead,
   formatWhen,
   sortReminders,
   toChoice,
@@ -22,6 +23,7 @@ const cancelButton = document.querySelector<HTMLButtonElement>("#cancel")!;
 const listEl = document.querySelector<HTMLUListElement>("#list")!;
 const emptyEl = document.querySelector<HTMLElement>("#empty")!;
 const sortSelect = document.querySelector<HTMLSelectElement>("#sort")!;
+const leadSelect = document.querySelector<HTMLSelectElement>("#lead")!;
 
 /// 編集中のリマインダーの ID（新規登録なら null）
 let editingId: number | null = null;
@@ -47,8 +49,10 @@ function syncDaysBox() {
   daysBox.hidden = repeatSelect.value !== "days";
 }
 
-function render(list: Reminder[]) {
-  current = list;
+function render(all: Reminder[]) {
+  // カウントダウンのタイマーは「タイマー」の見出しに出す
+  const list = all.filter((r) => !r.timer);
+  current = all;
   listEl.replaceChildren(
     ...sortReminders(list, sortSelect.value as SortOrder).map((r) => {
       const li = document.createElement("li");
@@ -58,7 +62,7 @@ function render(list: Reminder[]) {
       text.textContent = r.text;
       const when = document.createElement("span");
       when.className = "when";
-      when.textContent = formatWhen(r);
+      when.textContent = [formatWhen(r), formatLead(r.lead_min)].filter(Boolean).join("  ・  ");
 
       const edit = document.createElement("button");
       edit.type = "button";
@@ -88,6 +92,7 @@ function resetForm() {
   textInput.value = "";
   repeatSelect.value = "once";
   setDays(0);
+  leadSelect.value = "0";
   syncDaysBox();
   const next = new Date(Date.now() + 60 * 60_000);
   next.setMinutes(0, 0, 0);
@@ -100,6 +105,7 @@ function startEdit(r: Reminder) {
   setWhen(new Date(r.at));
   repeatSelect.value = toChoice(r);
   setDays(r.days);
+  leadSelect.value = String(r.lead_min);
   syncDaysBox();
   errorEl.textContent = "";
   addButton.textContent = "更新";
@@ -144,7 +150,7 @@ form.addEventListener("submit", async (e) => {
   }
   const { repeat, days } = toSaved(repeatSelect.value as RepeatChoice, selectedDays());
   try {
-    const args = { text: textInput.value, at, repeat, days };
+    const args = { text: textInput.value, at, repeat, days, leadMin: Number(leadSelect.value) };
     const list =
       editingId === null
         ? await invoke<Reminder[]>("add_reminder", args)

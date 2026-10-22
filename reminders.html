@@ -3,11 +3,19 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>リマインダー</title>
+    <title>Desktop Mascot</title>
     <link rel="stylesheet" href="/src/reminders.css" />
   </head>
   <body>
     <main>
+      <nav class="tabs" role="tablist">
+        <button type="button" role="tab" data-tab="reminders">リマインダー</button>
+        <button type="button" role="tab" data-tab="timers">タイマー</button>
+        <button type="button" role="tab" data-tab="notes">メモ</button>
+        <button type="button" role="tab" data-tab="weather">天気</button>
+      </nav>
+
+      <section class="panel" data-panel="reminders">
       <form id="form" autocomplete="off">
         <label>
           内容
@@ -41,6 +49,16 @@
             <option value="days">曜日を選ぶ</option>
           </select>
         </label>
+        <label>
+          事前に知らせる
+          <select id="lead">
+            <option value="0">しない</option>
+            <option value="5">5 分前</option>
+            <option value="10">10 分前</option>
+            <option value="30">30 分前</option>
+            <option value="60">1 時間前</option>
+          </select>
+        </label>
         <div id="days" class="days" hidden aria-label="くり返す曜日">
           <label><input type="checkbox" value="0" />月</label>
           <label><input type="checkbox" value="1" />火</label>
@@ -69,7 +87,98 @@
       </div>
       <ul id="list"></ul>
       <p id="empty">リマインダーはありません</p>
+    
+      </section>
+
+      <section class="panel" data-panel="timers" hidden>
+        <h3>カウントダウン</h3>
+        <form id="timer-form" autocomplete="off">
+          <label>
+            名前（省略できます）
+            <input id="timer-label" type="text" maxlength="100" placeholder="例：パスタ" />
+          </label>
+          <label>
+            時間（分）
+            <input id="timer-min" type="number" min="1" max="1440" value="3" required />
+          </label>
+          <div class="quick">
+            <button type="button" data-timer-min="3">3 分</button>
+            <button type="button" data-timer-min="5">5 分</button>
+            <button type="button" data-timer-min="10">10 分</button>
+            <button type="button" data-timer-min="15">15 分</button>
+            <button type="button" data-timer-min="30">30 分</button>
+            <button type="button" data-timer-min="60">1 時間</button>
+          </div>
+          <p id="timer-error" class="error" role="alert"></p>
+          <div class="buttons"><button class="primary" type="submit">始める</button></div>
+        </form>
+        <h2 class="section-title">動いているタイマー</h2>
+        <ul id="timer-list"></ul>
+        <p id="timer-empty" class="empty">動いているタイマーはありません</p>
+
+        <h3>ポモドーロ</h3>
+        <p id="pomo-status" class="status">止まっています</p>
+        <div class="buttons">
+          <button id="pomo-start" class="primary" type="button">始める</button>
+          <button id="pomo-stop" type="button">止める</button>
+        </div>
+        <form id="pomo-form" class="pomo-cfg">
+          <label>作業（分）<input id="pomo-work" type="number" min="1" max="180" /></label>
+          <label>休憩（分）<input id="pomo-break" type="number" min="1" max="180" /></label>
+          <label>長い休憩（分）<input id="pomo-long" type="number" min="1" max="180" /></label>
+          <label>長い休憩の間隔（回）<input id="pomo-every" type="number" min="1" max="12" /></label>
+          <p id="pomo-error" class="error" role="alert"></p>
+          <div class="buttons"><button type="submit">設定を保存</button></div>
+        </form>
+      </section>
+
+      <section class="panel" data-panel="notes" hidden>
+        <form id="note-form" autocomplete="off">
+          <label>
+            メモ
+            <textarea id="note-text" rows="3" maxlength="300" placeholder="あとで貼り付けたい文字を預けておきます"></textarea>
+          </label>
+          <p id="note-error" class="error" role="alert"></p>
+          <div class="buttons">
+            <button class="primary" type="submit">預ける</button>
+            <button id="note-clip" type="button">クリップボードから預ける</button>
+          </div>
+        </form>
+        <h2 class="section-title">預けたメモ</h2>
+        <ul id="note-list"></ul>
+        <p id="note-empty" class="empty">メモはありません</p>
+      </section>
+
+      <section class="panel" data-panel="weather" hidden>
+        <form id="weather-form" autocomplete="off">
+          <label class="check"><input id="weather-enabled" type="checkbox" /> 毎朝、天気を知らせる</label>
+          <label>
+            場所
+            <span class="inline">
+              <input id="weather-city" type="text" maxlength="60" placeholder="例：東京" />
+              <button id="weather-search" type="button">探す</button>
+            </span>
+          </label>
+          <ul id="weather-places"></ul>
+          <p id="weather-place" class="status"></p>
+          <label>
+            知らせる時刻
+            <select id="weather-hour"></select>
+          </label>
+          <p id="weather-error" class="error" role="alert"></p>
+          <div class="buttons">
+            <button class="primary" type="submit">保存</button>
+            <button id="weather-now" type="button">いま確認</button>
+          </div>
+          <p id="weather-result" class="status"></p>
+        </form>
+        <p class="note">天気は Open-Meteo（open-meteo.com）から取得します。ネットへの接続が要ります。</p>
+      </section>
     </main>
+    <script type="module" src="/src/tabs.ts"></script>
     <script type="module" src="/src/reminders.ts"></script>
+    <script type="module" src="/src/timers.ts"></script>
+    <script type="module" src="/src/notes.ts"></script>
+    <script type="module" src="/src/weather-tab.ts"></script>
   </body>
 </html>

@@ -213,3 +213,131 @@ li.editing {
   color: var(--muted);
   font-size: 13px;
 }
+
+/* ---- 見出し（タブ） ---- */
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 16px;
+  border-bottom: 1px solid var(--line);
+}
+.tabs button {
+  font: inherit;
+  padding: 7px 12px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+}
+.tabs button[aria-selected="true"] {
+  color: var(--fg);
+  font-weight: 700;
+  border-bottom-color: var(--accent);
+}
+.panel[hidden] {
+  display: none;
+}
+
+/* ---- タイマー・メモ・天気の画面 ---- */
+
+h3 {
+  margin: 4px 0 10px;
+  font-size: 14px;
+}
+.panel h3:not(:first-child) {
+  margin-top: 26px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.section-title {
+  margin: 18px 0 8px;
+}
+textarea {
+  font: inherit;
+  padding: 7px 9px;
+  color: var(--fg);
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  resize: vertical;
+}
+input[type="number"] {
+  width: 100%;
+}
+.error {
+  margin: 0;
+  min-height: 1.5em;
+  color: var(--danger);
+  font-size: 13px;
+}
+.empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.empty[hidden] {
+  display: none;
+}
+.status {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+.note {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+.inline {
+  display: flex;
+  gap: 8px;
+}
+.inline input {
+  flex: 1;
+}
+.buttons button,
+.inline button {
+  font: inherit;
+  padding: 8px 14px;
+  color: var(--fg);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.buttons button.primary {
+  flex: 1;
+  font-weight: 700;
+  color: var(--accent-fg);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.buttons button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.pomo-cfg {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 12px;
+  margin-top: 14px;
+}
+.pomo-cfg .error,
+.pomo-cfg .buttons {
+  grid-column: 1 / -1;
+}
+.note-text {
+  white-space: pre-wrap;
+}
+#timer-list,
+#note-list,
+#weather-places {
+  margin-bottom: 8px;
+}
