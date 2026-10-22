@@ -1,6 +1,7 @@
 // 16×16 のドット絵スプライト
 //   . 透明  O 輪郭  B 体  D / K 模様（三毛の茶・黒、いぬの耳）  E 目  e 目の上半分（まばたきで消える）
-//   R 鼻・口・耳の内側（くらにゃん）  F Y G T M くらにゃんのスカーフの赤・黄・緑・青緑・紫  P ほっぺ  H ハート  Z 寝息の「Z」
+//   C 胸の白（黒ネコ）  Q ピンクの耳・鼻（白ネコ）  J 舌（いぬ）  F Y 首輪の赤・鈴の黄（三毛）
+//   R 鼻・耳の内側（くらにゃん）  W 口（くらにゃん）  F Y G T M くらにゃんのスカーフの赤・黄・緑・青緑・紫  P ほっぺ  H ハート  Z 寝息の「Z」
 // 色はキャラクターごとに styles.css の CSS 変数で決まる。
 // 目・表情は体の上に重ねる部品にして、CSS で切り替える
 
@@ -22,6 +23,38 @@ const CAT_BODY = [
   ".OBBBBBBBBBBBBO.",
   "..OOBBBOOBBBOO..",
 ];
+
+// 土台のドット絵に、(行, 列, 文字列) の順で色を重ねる（"." は何もしない）
+function paint(body: string[], edits: [number, number, string][]): string[] {
+  const rows = body.map((row) => row.split(""));
+  for (const [r, c, s] of edits) {
+    [...s].forEach((ch, i) => {
+      if (ch !== ".") rows[r][c + i] = ch;
+    });
+  }
+  return rows.map((row) => row.join(""));
+}
+
+// 茶トラ：額の M 字の縞と、ほおの縞
+const TORA_BODY = paint(CAT_BODY, [
+  [4, 6, "D..D"],
+  [5, 7, "DD"],
+  [7, 1, "DD"],
+  [7, 13, "DD"],
+]);
+
+// 黒ネコ：胸の白い毛（タキシード）
+const KURO_BODY = paint(CAT_BODY, [
+  [11, 6, "CCCC"],
+  [12, 7, "CC"],
+]);
+
+// 白ネコ：ピンクの耳と鼻
+const SHIRO_BODY = paint(CAT_BODY, [
+  [2, 2, "Q"],
+  [2, 13, "Q"],
+  [8, 7, "QQ"],
+]);
 
 // 三毛：左耳から額に茶、右耳に黒のぶち
 const MIKE_BODY = [
@@ -88,7 +121,7 @@ const KURANYAN_NOSE_LEFT = [".......R........"];
 const KURANYAN_NOSE_RIGHT = ["........R......."];
 const KURANYAN_NOSE_TOP = 8;
 // 口（9 行目、輪郭なしの赤い口）。表情の間は隠す
-const KURANYAN_MOUTH = ["......RRRR......"];
+const KURANYAN_MOUTH = ["......WWWW......"];
 const KURANYAN_MOUTH_TOP = 9;
 // くらにゃんの表情（FACE_TOP 行目から）。ふつうのネコ用のものはスカーフや鼻に重なるので、専用にしている
 const KURANYAN_HAPPY_FACE = [
@@ -101,14 +134,14 @@ const KURANYAN_SLEEP_FACE = [
   "................",
   "...EEE....EEE...",
   "................",
-  ".......RR.......",
+  ".......WW.......",
 ];
 const KURANYAN_YAWN_FACE = [
   "................",
   "...EEE....EEE...",
   "................",
-  ".....OOOOOO.....",
   ".....ORRRRO.....",
+  "......OOOO......",
 ];
 const KURANYAN_FLYING_FACE = [
   "....E......E....",
@@ -118,11 +151,19 @@ const KURANYAN_FLYING_FACE = [
 ];
 
 const BODIES: Record<Character, string[]> = {
-  tora: CAT_BODY,
-  kuro: CAT_BODY,
-  shiro: CAT_BODY,
-  mike: MIKE_BODY,
-  inu: INU_BODY,
+  tora: TORA_BODY,
+  kuro: KURO_BODY,
+  shiro: SHIRO_BODY,
+  // 三毛は赤い首輪と鈴
+  mike: paint(MIKE_BODY, [
+    [11, 2, "FFFFFFFFFFFF"],
+    [12, 7, "YY"],
+  ]),
+  // いぬは舌ぺろ
+  inu: paint(INU_BODY, [
+    [10, 7, "JJ"],
+    [11, 7, "JJ"],
+  ]),
   kuranyan: KURANYAN_BODY,
 };
 
@@ -276,10 +317,9 @@ export function renderSprite(svg: SVGSVGElement, character: Character = "tora") 
   svg.replaceChildren(root);
 }
 
-// 開発時の確認用：すべての行が 16 ドット幅か
-export function validateSprites(): string[] {
-  const errors: string[] = [];
-  const all: Record<string, string[]> = {
+// 描画に使うすべてのドット絵（名前 → 行）。確認用
+function allSprites(): Record<string, string[]> {
+  return {
     ...BODIES,
     EYES,
     KURANYAN_EYES,
@@ -300,10 +340,26 @@ export function validateSprites(): string[] {
     HEART,
     SHADOW: [SHADOW],
   };
-  for (const [name, rows] of Object.entries(all)) {
+}
+
+// 開発時の確認用：すべての行が 16 ドット幅か
+export function validateSprites(): string[] {
+  const errors: string[] = [];
+  for (const [name, rows] of Object.entries(allSprites())) {
     rows.forEach((row, i) => {
       if (row.length !== 16) errors.push(`${name}[${i}] is ${row.length} wide`);
     });
   }
   return errors;
+}
+
+// 確認用：ドット絵が使う色の文字（CSS の .px-X と対応する。e は目の上半分で E と同じ色）
+export function usedColors(): Set<string> {
+  const colors = new Set<string>();
+  for (const rows of Object.values(allSprites())) {
+    for (const ch of rows.join("")) {
+      if (ch !== ".") colors.add(ch === "e" ? "E" : ch);
+    }
+  }
+  return colors;
 }

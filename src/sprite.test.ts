@@ -2,7 +2,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { BUBBLE_CHARS, hourLine, lineFor, truncateForBubble } from "./speech.ts";
-import { CHARACTERS, validateSprites } from "./sprite.ts";
+import { readFileSync } from "node:fs";
+import { CHARACTERS, usedColors, validateSprites } from "./sprite.ts";
 
 test("すべてのドット絵の行が 16 ドット幅", () => {
   assert.deepEqual(validateSprites(), []);
@@ -26,4 +27,11 @@ test("ふきだしに収まらない長いリマインダーは「…」で省�
   const cut = truncateForBubble("あ".repeat(BUBBLE_CHARS + 10));
   assert.equal([...cut].length, BUBBLE_CHARS);
   assert.ok(cut.endsWith("…"));
+});
+
+test("ドット絵が使うすべての色に、CSS の塗りの指定がある", () => {
+  const css = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
+  for (const color of usedColors()) {
+    assert.ok(css.includes(`.px-${color} `), `.px-${color} がありません`);
+  }
 });

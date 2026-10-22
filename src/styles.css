@@ -103,6 +103,10 @@ body {
 .px-E { fill: var(--c-e); }
 .px-P { fill: var(--c-p); }
 .px-R { fill: var(--c-r, #e8806a); }
+.px-W { fill: #c9503f; }
+.px-C { fill: #f7f4ef; }
+.px-Q { fill: #ff7a9a; }
+.px-J { fill: #e0607a; }
 .px-F { fill: #e8503a; }
 .px-Y { fill: #f6c744; }
 .px-G { fill: #6bbf59; }
