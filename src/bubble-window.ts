@@ -12,7 +12,7 @@ const card = document.querySelector<HTMLElement>("#card")!;
 
 function render({ text, snooze, scale, chat }: Content) {
   document.documentElement.style.setProperty("--s", String(scale));
-  card.classList.toggle("chat", chat);
+  document.body.classList.toggle("chat", chat);
 
   const message = document.createElement("div");
   message.textContent = text;

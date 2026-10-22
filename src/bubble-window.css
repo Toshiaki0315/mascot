@@ -1,4 +1,5 @@
-/* リマインダーなどの大きなふきだし（専用のウィンドウ）。大きさはマスコットの倍率 --s に合わせる */
+/* 大きなふきだし（専用のウィンドウ）。大きさはマスコットの倍率 --s に合わせる。
+   リマインダーは橙の枠、ふつうのおしゃべり（body.chat）は茶色の枠 */
 
 html,
 body {
@@ -12,26 +13,35 @@ body {
 
 :root {
   --s: 1;
+  --border: #d9692a;
+  --fill: #fff3e0;
+}
+body.chat {
+  --border: #5a3a1f;
+  --fill: #fffdf6;
 }
 
 /* 影が切れないよう、まわりに少し余白を取る */
 #wrap {
   display: inline-block;
-  padding: calc(var(--s) * 3px) calc(var(--s) * 6px) calc(var(--s) * 3px) calc(var(--s) * 3px);
+  padding: calc(var(--s) * 3px) calc(var(--s) * 8px) calc(var(--s) * 5px) calc(var(--s) * 3px);
   cursor: pointer;
 }
+body.chat #wrap {
+  cursor: default;
+}
 
+/* ふきだし本体：角を大きく丸めて、やわらかい影を付ける */
 #card {
   width: max-content;
   max-width: calc(var(--s) * 340px);
   box-sizing: border-box;
-  padding: calc(var(--s) * 12px) calc(var(--s) * 18px);
-  background: #fff3e0;
+  padding: calc(var(--s) * 14px) calc(var(--s) * 22px);
+  background: var(--fill);
   color: #3b2a1a;
-  border: calc(var(--s) * 4px) solid #d9692a;
-  /* 角丸にせず、太い枠と影でドット絵風にする */
-  border-radius: 0;
-  box-shadow: calc(var(--s) * 4px) calc(var(--s) * 4px) 0 rgba(0, 0, 0, 0.18);
+  border: calc(var(--s) * 4px) solid var(--border);
+  border-radius: calc(var(--s) * 26px);
+  box-shadow: calc(var(--s) * 2px) calc(var(--s) * 4px) calc(var(--s) * 8px) rgba(0, 0, 0, 0.22);
   font-size: calc(var(--s) * 26px);
   font-weight: 700;
   line-height: 1.4;
@@ -40,24 +50,31 @@ body {
   word-break: keep-all;
   overflow-wrap: anywhere;
 }
-
-/* ふつうのおしゃべり：リマインダーより少し小さく、茶色の枠にする（クリックは後ろのアプリへ通す） */
-#card.chat {
+body.chat #card {
   font-size: calc(var(--s) * 22px);
-  background: #fffdf6;
-  border-color: #5a3a1f;
-}
-#card.chat + #tail {
-  background: #5a3a1f;
 }
 
-/* しっぽ（マスコットの頭を指す） */
+/* しっぽ（マスコットの頭を指す）。外側の三角（枠の色）の上に、内側の三角（ふきだしの色）を重ねて、
+   ふきだしの下の枠線がしっぽの部分でとぎれて、つながって見えるようにする */
 #tail {
-  width: calc(var(--s) * 18px);
-  height: calc(var(--s) * 12px);
-  margin: calc(var(--s) * -2px) auto 0;
-  background: #d9692a;
-  clip-path: polygon(0 0, 100% 0, 50% 100%);
+  position: relative;
+  width: 0;
+  height: 0;
+  margin: calc(var(--s) * -4px) auto 0;
+  border-left: calc(var(--s) * 14px) solid transparent;
+  border-right: calc(var(--s) * 14px) solid transparent;
+  border-top: calc(var(--s) * 20px) solid var(--border);
+}
+#tail::after {
+  content: "";
+  position: absolute;
+  left: calc(var(--s) * -9px);
+  top: calc(var(--s) * -22px);
+  width: 0;
+  height: 0;
+  border-left: calc(var(--s) * 9px) solid transparent;
+  border-right: calc(var(--s) * 9px) solid transparent;
+  border-top: calc(var(--s) * 15px) solid var(--fill);
 }
 
 .actions {
@@ -70,14 +87,16 @@ body {
   color: #8a5a2a;
 }
 
+/* ボタンも丸くする */
 .action {
   white-space: nowrap;
-  padding: calc(var(--s) * 3px) calc(var(--s) * 12px);
-  border: calc(var(--s) * 2px) solid #d9692a;
+  padding: calc(var(--s) * 3px) calc(var(--s) * 14px);
+  border: calc(var(--s) * 2px) solid var(--border);
+  border-radius: calc(var(--s) * 999px);
   background: #fffdf6;
 }
 
 .action:hover {
-  background: #d9692a;
+  background: var(--border);
   color: #fff;
 }
