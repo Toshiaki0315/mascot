@@ -5,9 +5,18 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State};
 
-use crate::{reminder::now_ms, settings::Settings, tray, Shared};
+use crate::{reminder::now_ms, settings::Settings, system, tray, Shared};
 
 const MIN_MS: i64 = 60_000;
+
+/// 区間の終わりに、これだけ（秒）キーボード・マウスの入力がなければ、離席中とみなして止める。
+/// 止め忘れたまま夜間まで、休憩と作業をくり返して音が鳴り続けるのを防ぐ
+pub const AWAY_STOP_SECS: f64 = 20.0 * 60.0;
+
+/// 離席中とみなす長さの間、入力がなかったか
+pub fn is_away(idle_secs: f64) -> bool {
+    idle_secs >= AWAY_STOP_SECS
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -113,14 +122,24 @@ pub fn advance(p: &Pomodoro, cfg: &PomodoroCfg, now: i64) -> (Pomodoro, String) 
     }
 }
 
-/// 区間が終わっていれば進めて、知らせる文を返す（スケジューラから呼ぶ）
-pub fn tick(app: &AppHandle, shared: &Shared, now: i64) -> Option<String> {
+/// 区間が終わっていれば進めて、知らせる文と、音を鳴らすかを返す（スケジューラから呼ぶ）。
+/// 離席中（入力が長いあいだない）なら、進めずに止めて、止めたことを（音なしで）知らせる
+pub fn tick(app: &AppHandle, shared: &Shared, now: i64) -> Option<(String, bool)> {
     let settings = shared.store.get();
     let p = settings.pomodoro.filter(|p| p.ends_at <= now)?;
+    if is_away(system::seconds_since_last_input()) {
+        shared.store.update(|s| s.pomodoro = None);
+        tray::refresh_timers(app);
+        let text = format!(
+            "席を外していたので、ポモドーロを止めたよ（作業 {} 回おつかれさま）",
+            p.cycle
+        );
+        return Some((text, false));
+    }
     let (next, text) = advance(&p, &settings.pomodoro_cfg, now);
     shared.store.update(|s| s.pomodoro = Some(next));
     tray::refresh_timers(app);
-    Some(text)
+    Some((text, true))
 }
 
 #[tauri::command]
@@ -252,5 +271,13 @@ mod tests {
         let cfg: PomodoroCfg = serde_json::from_str(r#"{"work_min":50}"#).unwrap();
         assert_eq!(cfg.work_min, 50);
         assert_eq!(cfg.break_min, 5);
+    }
+
+    #[test]
+    fn away_after_twenty_minutes_without_input() {
+        assert!(!is_away(0.0));
+        assert!(!is_away(AWAY_STOP_SECS - 1.0));
+        assert!(is_away(AWAY_STOP_SECS));
+        assert!(is_away(8.0 * 3600.0));
     }
 }

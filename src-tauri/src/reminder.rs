@@ -404,7 +404,18 @@ fn notify(app: &AppHandle, text: &str) {
 
 /// 音を鳴らす（待たずに戻る）
 fn play_sound() {
-    let _ = std::process::Command::new("afplay").arg(SOUND_FILE).spawn();
+    // 音の出力先がないときなどに afplay が出すエラーで、ターミナルを汚さない。
+    // 終わりを待つ係のスレッドを立てて、終わったプロセスが残らないようにする
+    let child = std::process::Command::new("afplay")
+        .arg(SOUND_FILE)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+    if let Ok(mut child) = child {
+        thread::spawn(move || {
+            let _ = child.wait();
+        });
+    }
 }
 
 /// ふきだしへ送る知らせ
@@ -460,6 +471,8 @@ pub fn spawn_scheduler(app: AppHandle, shared: Arc<Shared>) {
         thread::sleep(CHECK_INTERVAL);
         let now = now_ms();
         let mut messages: Vec<(String, bool)> = Vec::new();
+        // 離席で止めたことを知らせるだけのときは、音を鳴らさない
+        let mut sound = false;
 
         let any_lead = shared
             .store
@@ -472,6 +485,7 @@ pub fn spawn_scheduler(app: AppHandle, shared: Arc<Shared>) {
             shared
                 .store
                 .update(|s| leads = take_leads(&mut s.reminders, now));
+            sound |= !leads.is_empty();
             messages.extend(leads.into_iter().map(|t| (t, false)));
         }
 
@@ -482,17 +496,19 @@ pub fn spawn_scheduler(app: AppHandle, shared: Arc<Shared>) {
                 .update(|s| fired = take_due(&mut s.reminders, now));
             tray::refresh_reminders(&app);
             tray::refresh_timers(&app);
+            sound |= !fired.is_empty();
             messages.extend(fired.into_iter().map(|r| (r.text, !r.timer)));
         }
 
-        if let Some(text) = pomodoro::tick(&app, &shared, now) {
+        if let Some((text, with_sound)) = pomodoro::tick(&app, &shared, now) {
+            sound |= with_sound;
             messages.push((text, false));
         }
 
         if messages.is_empty() {
             continue;
         }
-        if shared.store.get().reminder_sound {
+        if sound && shared.store.get().reminder_sound {
             play_sound();
         }
         for (text, snooze) in messages {
