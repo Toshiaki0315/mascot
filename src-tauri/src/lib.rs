@@ -279,6 +279,12 @@ pub fn run() {
             reminder::delete_reminder
         ])
         .setup(|app| {
+            // ふきだしのウィンドウは、Accessory（常駐アプリ）にする前に作る。
+            // Accessory にした後で作ったウィンドウは、全画面アプリの Space にも入ってくる。
+            // マスコットのウィンドウ（tauri.conf.json から setup より前に作られる）は入らないので、
+            // 全画面アプリに切り替えたときに、ふきだしだけが見えてしまう
+            bubble::create(app.handle())?;
+
             // Dock に表示せず、メニューバー常駐アプリとして動かす
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
@@ -308,7 +314,6 @@ pub fn run() {
             spawn_cursor_watcher(app.handle().clone(), shared.clone());
             let bubble_state = Arc::new(bubble::BubbleState::new());
             app.manage(bubble_state.clone());
-            bubble::create(app.handle())?;
             bubble::spawn_follower(app.handle().clone(), shared.clone(), bubble_state);
             reminder::spawn_scheduler(app.handle().clone(), shared.clone());
             wander::spawn(app.handle().clone(), shared);
