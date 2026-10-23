@@ -62,6 +62,7 @@ struct TrayItems {
     reminder_menu: Submenu<Wry>,
     reminder_rows: Mutex<Vec<MenuItem<Wry>>>,
     timers: DynamicMenu,
+    pomodoro: DynamicMenu,
     notes: DynamicMenu,
     /// トレイと、マスコットの右クリックで共有する
     menu: Menu<Wry>,
@@ -83,57 +84,61 @@ pub fn setup(app: &tauri::App, shared: &Arc<Shared>) -> tauri::Result<()> {
         None::<&str>,
     )?;
     let toggle = MenuItem::with_id(app, "toggle", "表示 / 非表示", true, None::<&str>)?;
-    let manage_reminders = MenuItem::with_id(
+    // 機能ごとのサブメニューは、どれも同じ並びにそろえる：
+    //   ① 〇〇の画面を開く…  ──  ② すぐ使う操作  ──  ③ 直近の一覧（予定が変わるたびに作り直す）
+    let open_item = |id: &str, label: &str| MenuItem::with_id(app, id, label, true, None::<&str>);
+
+    let reminder_menu = Submenu::with_items(
         app,
-        "reminders",
-        "リマインダーの追加・編集…",
+        "リマインダー",
         true,
-        None::<&str>,
-    )?;
-    let open_timers = MenuItem::with_id(
-        app,
-        "tools-timers",
-        "タイマー・ポモドーロの設定…",
-        true,
-        None::<&str>,
+        &[
+            &open_item("reminders", "リマインダーの画面を開く…")?,
+            &PredefinedMenuItem::separator(app)?,
+        ],
     )?;
     let timer_menu = Submenu::with_items(
         app,
         "タイマー",
         true,
         &[
-            &open_timers,
+            &open_item("tools-timers", "タイマーの画面を開く…")?,
             &PredefinedMenuItem::separator(app)?,
-            &MenuItem::with_id(app, "timer-3", "3 分タイマー", true, None::<&str>)?,
-            &MenuItem::with_id(app, "timer-5", "5 分タイマー", true, None::<&str>)?,
-            &MenuItem::with_id(app, "timer-10", "10 分タイマー", true, None::<&str>)?,
+            &open_item("timer-3", "3 分タイマー")?,
+            &open_item("timer-5", "5 分タイマー")?,
+            &open_item("timer-10", "10 分タイマー")?,
             &PredefinedMenuItem::separator(app)?,
         ],
     )?;
-    let open_notes = MenuItem::with_id(app, "tools-notes", "メモを開く…", true, None::<&str>)?;
-    let save_clip = MenuItem::with_id(
+    let pomodoro_menu = Submenu::with_items(
         app,
-        "notes-save-clip",
-        "クリップボードをメモに保存",
+        "ポモドーロ",
         true,
-        None::<&str>,
+        &[
+            &open_item("tools-pomodoro", "ポモドーロの画面を開く…")?,
+            &PredefinedMenuItem::separator(app)?,
+        ],
     )?;
     let notes_menu = Submenu::with_items(
         app,
         "メモ",
         true,
         &[
-            &open_notes,
-            &save_clip,
+            &open_item("tools-notes", "メモの画面を開く…")?,
+            &PredefinedMenuItem::separator(app)?,
+            &open_item("notes-save-clip", "クリップボードをメモに保存")?,
             &PredefinedMenuItem::separator(app)?,
         ],
     )?;
-    let weather_now = MenuItem::with_id(app, "weather-now", "今日の天気", true, None::<&str>)?;
-    let reminder_menu = Submenu::with_items(
+    let weather_menu = Submenu::with_items(
         app,
-        "リマインダー",
+        "今日の天気",
         true,
-        &[&manage_reminders, &PredefinedMenuItem::separator(app)?],
+        &[
+            &open_item("tools-weather", "天気の画面を開く…")?,
+            &PredefinedMenuItem::separator(app)?,
+            &open_item("weather-now", "今日の天気を見る")?,
+        ],
     )?;
     let walking = CheckMenuItem::with_id(
         app,
@@ -256,10 +261,12 @@ pub fn setup(app: &tauri::App, shared: &Arc<Shared>) -> tauri::Result<()> {
             &about,
             &PredefinedMenuItem::separator(app)?,
             &toggle,
+            &PredefinedMenuItem::separator(app)?,
             &reminder_menu,
             &timer_menu,
+            &pomodoro_menu,
             &notes_menu,
-            &weather_now,
+            &weather_menu,
             &PredefinedMenuItem::separator(app)?,
             &character_menu,
             &walking,
@@ -287,6 +294,7 @@ pub fn setup(app: &tauri::App, shared: &Arc<Shared>) -> tauri::Result<()> {
         reminder_menu,
         reminder_rows: Mutex::new(Vec::new()),
         timers: DynamicMenu::new(timer_menu),
+        pomodoro: DynamicMenu::new(pomodoro_menu),
         notes: DynamicMenu::new(notes_menu),
         menu: menu.clone(),
     });
@@ -303,6 +311,7 @@ pub fn setup(app: &tauri::App, shared: &Arc<Shared>) -> tauri::Result<()> {
         .build(app)?;
     refresh_reminders(app.handle());
     refresh_timers(app.handle());
+    refresh_pomodoro(app.handle());
     refresh_notes(app.handle());
     Ok(())
 }
@@ -405,7 +414,7 @@ fn short(text: &str, max: usize) -> String {
     }
 }
 
-/// 「タイマー」サブメニューの、動いているタイマーとポモドーロの行を作り直す
+/// 「タイマー」サブメニューの、動いているタイマーの行を作り直す
 pub fn refresh_timers(app: &AppHandle) {
     let (Some(items), Some(shared)) =
         (app.try_state::<TrayItems>(), app.try_state::<Arc<Shared>>())
@@ -416,8 +425,17 @@ pub fn refresh_timers(app: &AppHandle) {
     let mut rows = Vec::new();
     let mut timers: Vec<&Reminder> = settings.reminders.iter().filter(|r| r.timer).collect();
     timers.sort_by_key(|r| (r.at, r.id));
+    if timers.is_empty() {
+        rows.extend(MenuItem::with_id(
+            app,
+            "timer-none",
+            "動いているタイマーはありません",
+            false,
+            None::<&str>,
+        ));
+    }
     for r in timers {
-        // 押すと、タイマーの設定ウィンドウが開く
+        // 押すと、タイマーの画面が開く
         rows.extend(MenuItem::with_id(
             app,
             format!("tools-timers-item-{}", r.id),
@@ -426,6 +444,18 @@ pub fn refresh_timers(app: &AppHandle) {
             None::<&str>,
         ));
     }
+    items.timers.replace(rows);
+}
+
+/// 「ポモドーロ」サブメニューの、いまの状態と、始める・止める行を作り直す
+pub fn refresh_pomodoro(app: &AppHandle) {
+    let (Some(items), Some(shared)) =
+        (app.try_state::<TrayItems>(), app.try_state::<Arc<Shared>>())
+    else {
+        return;
+    };
+    let settings = shared.store.get();
+    let mut rows = Vec::new();
     match settings.pomodoro {
         Some(p) => {
             rows.extend(MenuItem::with_id(
@@ -462,7 +492,7 @@ pub fn refresh_timers(app: &AppHandle) {
             ));
         }
     }
-    items.timers.replace(rows);
+    items.pomodoro.replace(rows);
 }
 
 /// 「メモ」サブメニューの、直近のメモの行を作り直す
@@ -526,6 +556,8 @@ fn on_menu(app: &AppHandle, id: &str) {
         }
         id if id.starts_with("reminders") => reminder::open_window(app, "reminders"),
         id if id.starts_with("tools-timers") => reminder::open_window(app, "timers"),
+        "tools-pomodoro" => reminder::open_window(app, "pomodoro"),
+        "tools-weather" => reminder::open_window(app, "weather"),
         "tools-notes" => reminder::open_window(app, "notes"),
         "timer-3" | "timer-5" | "timer-10" => {
             let minutes: u32 = id["timer-".len()..].parse().unwrap_or(3);

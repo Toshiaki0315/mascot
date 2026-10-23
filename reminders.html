@@ -11,6 +11,7 @@
       <nav class="tabs" role="tablist">
         <button type="button" role="tab" data-tab="reminders">リマインダー</button>
         <button type="button" role="tab" data-tab="timers">タイマー</button>
+        <button type="button" role="tab" data-tab="pomodoro">ポモドーロ</button>
         <button type="button" role="tab" data-tab="notes">メモ</button>
         <button type="button" role="tab" data-tab="weather">天気</button>
       </nav>
@@ -116,7 +117,11 @@
         <ul id="timer-list"></ul>
         <p id="timer-empty" class="empty">動いているタイマーはありません</p>
 
+      </section>
+
+      <section class="panel" data-panel="pomodoro" hidden>
         <h3>ポモドーロ</h3>
+        <p class="note">作業と休憩をくり返します。休憩のあとは、自動で次の作業に進みます。</p>
         <p id="pomo-status" class="status">止まっています</p>
         <div class="buttons">
           <button id="pomo-start" class="primary" type="button">始める</button>

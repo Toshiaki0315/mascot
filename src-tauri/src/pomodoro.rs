@@ -129,7 +129,7 @@ pub fn tick(app: &AppHandle, shared: &Shared, now: i64) -> Option<(String, bool)
     let p = settings.pomodoro.filter(|p| p.ends_at <= now)?;
     if is_away(system::seconds_since_last_input()) {
         shared.store.update(|s| s.pomodoro = None);
-        tray::refresh_timers(app);
+        tray::refresh_pomodoro(app);
         let text = format!(
             "席を外していたので、ポモドーロを止めたよ（作業 {} 回おつかれさま）",
             p.cycle
@@ -138,7 +138,7 @@ pub fn tick(app: &AppHandle, shared: &Shared, now: i64) -> Option<(String, bool)
     }
     let (next, text) = advance(&p, &settings.pomodoro_cfg, now);
     shared.store.update(|s| s.pomodoro = Some(next));
-    tray::refresh_timers(app);
+    tray::refresh_pomodoro(app);
     Some((text, true))
 }
 
@@ -158,7 +158,7 @@ pub fn start_now(app: &AppHandle, shared: &Shared) {
     shared
         .store
         .update(|s| s.pomodoro = Some(start(&cfg, now_ms())));
-    tray::refresh_timers(app);
+    tray::refresh_pomodoro(app);
 }
 
 #[tauri::command]
@@ -168,7 +168,7 @@ pub fn pomodoro_stop(app: AppHandle, shared: State<Arc<Shared>>) {
 
 pub fn stop_now(app: &AppHandle, shared: &Shared) {
     shared.store.update(|s| s.pomodoro = None);
-    tray::refresh_timers(app);
+    tray::refresh_pomodoro(app);
 }
 
 #[tauri::command]
@@ -181,7 +181,7 @@ pub fn set_pomodoro_config(
         return Err("時間は 1〜180 分、長い休憩の間隔は 1〜12 回にしてください".into());
     }
     shared.store.update(|s| s.pomodoro_cfg = cfg);
-    tray::refresh_timers(&app);
+    tray::refresh_pomodoro(&app);
     Ok(())
 }
 

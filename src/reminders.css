@@ -224,7 +224,8 @@ li.editing {
 }
 .tabs button {
   font: inherit;
-  padding: 7px 12px;
+  padding: 7px 9px;
+  white-space: nowrap;
   color: var(--muted);
   background: transparent;
   border: 0;

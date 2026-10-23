@@ -1,8 +1,8 @@
 import { listen } from "@tauri-apps/api/event";
 
-// 見出し（リマインダー / タイマー / メモ / 天気）の切り替え。
+// 見出し（リマインダー / タイマー / ポモドーロ / メモ / 天気）の切り替え。
 // 最初の見出しは URL の ?tab= で決まり、開いたままのウィンドウへは Rust 側が "tools-tab" で知らせる
-const TABS = ["reminders", "timers", "notes", "weather"] as const;
+const TABS = ["reminders", "timers", "pomodoro", "notes", "weather"] as const;
 type Tab = (typeof TABS)[number];
 
 const buttons = [...document.querySelectorAll<HTMLButtonElement>("[data-tab]")];
