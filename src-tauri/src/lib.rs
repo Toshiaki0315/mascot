@@ -67,6 +67,9 @@ pub(crate) struct Shared {
     resync: AtomicBool,
     /// トレイで「表示」になっているか（毎回 is_visible() を問い合わせないためのキャッシュ）
     visible: AtomicBool,
+    /// 全画面アプリの上で姿を消しているか（頭脳スレッドが決める）。
+    /// ふきだしは別のウィンドウなので、こちらを見て一緒に隠す
+    suppressed: AtomicBool,
     geometry: Mutex<Option<Geometry>>,
     store: Store,
 }
@@ -287,6 +290,7 @@ pub fn run() {
                 drag_started: AtomicBool::new(false),
                 resync: AtomicBool::new(false),
                 visible: AtomicBool::new(true),
+                suppressed: AtomicBool::new(false),
                 geometry: Mutex::new(None),
                 store: Store::load(path),
             });

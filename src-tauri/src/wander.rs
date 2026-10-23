@@ -559,6 +559,7 @@ impl Brain {
                 .is_some_and(|screen| system::is_fullscreen(&windows, screen.full));
         if covered != self.suppressed {
             self.suppressed = covered;
+            self.shared.suppressed.store(covered, Ordering::Relaxed);
             // window.hide()/show() はフォーカスを奪うことがあるため、中身を隠すだけにする
             let _ = self
                 .window

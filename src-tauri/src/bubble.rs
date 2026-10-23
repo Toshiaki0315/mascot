@@ -138,9 +138,29 @@ pub fn show_bubble(
     );
 }
 
+/// マスコットの姿が見えていないか（トレイで非表示、または全画面アプリの上で隠れている）。
+/// そのあいだは、ふきだしだけが出ることのないようにする
+fn mascot_hidden(shared: &Shared) -> bool {
+    !shared.visible.load(Ordering::Relaxed) || shared.suppressed.load(Ordering::Relaxed)
+}
+
 /// ふきだしのページが、文章に合わせた大きさを測って知らせてくる
 #[tauri::command]
-pub fn bubble_resize(app: AppHandle, state: State<Arc<BubbleState>>, w: f64, h: f64) {
+pub fn bubble_resize(
+    app: AppHandle,
+    state: State<Arc<BubbleState>>,
+    shared: State<Arc<Shared>>,
+    w: f64,
+    h: f64,
+) {
+    // 中身を送ってから大きさの知らせが届くまでの間に、全画面アプリで隠れていることがある。
+    // そのときは出さない。マスコット側へ「閉じた」とは知らせない（知らせると、待っている
+    // リマインダーを次々に出しては閉じてしまう）。出しかけのリマインダーは、マスコット側が
+    // 隠れたことを受け取ったときに通知センターへ回す
+    if mascot_hidden(&shared) {
+        hide_now(&app, &state);
+        return;
+    }
     let (Some(main), Some(bubble)) = (
         app.get_webview_window(MAIN_WINDOW),
         app.get_webview_window(LABEL),
@@ -200,7 +220,7 @@ pub fn spawn_follower(app: AppHandle, shared: Arc<Shared>, state: Arc<BubbleStat
                 last = None;
                 continue;
             }
-            if !shared.visible.load(Ordering::Relaxed) {
+            if mascot_hidden(&shared) {
                 dismiss(&app);
                 continue;
             }
