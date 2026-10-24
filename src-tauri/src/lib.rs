@@ -1,11 +1,14 @@
 mod about;
 mod bubble;
+mod general;
 mod geometry;
 mod notes;
+mod options;
 mod physics;
 mod pomodoro;
 mod reminder;
 mod settings;
+mod status;
 mod system;
 mod tray;
 mod wander;
@@ -70,11 +73,18 @@ pub(crate) struct Shared {
     /// 全画面アプリの上で姿を消しているか（頭脳スレッドが決める）。
     /// ふきだしは別のウィンドウなので、こちらを見て一緒に隠す
     suppressed: AtomicBool,
+    /// 画面がロックされている・ディスプレイが消えている間（誰も見ていないので、動きを止める）
+    paused: AtomicBool,
     geometry: Mutex<Option<Geometry>>,
     store: Store,
 }
 
 impl Shared {
+    /// 画面がロックされている・ディスプレイが消えている間か（誰も見ていないので、動きを止める）
+    pub(crate) fn paused(&self) -> bool {
+        self.paused.load(Ordering::Relaxed)
+    }
+
     pub(crate) fn geometry(&self) -> Option<Geometry> {
         *self.geometry.lock().unwrap()
     }
@@ -98,15 +108,16 @@ struct SettingsPayload {
     character: &'static str,
 }
 
-pub(crate) fn emit_settings(window: &WebviewWindow, shared: &Shared) {
+fn settings_payload(shared: &Shared) -> SettingsPayload {
     let settings = shared.store.get();
-    let _ = window.emit(
-        "mascot-settings",
-        SettingsPayload {
-            chatty: settings.chatty,
-            character: settings.character.name(),
-        },
-    );
+    SettingsPayload {
+        chatty: settings.chatty,
+        character: settings.character.name(),
+    }
+}
+
+pub(crate) fn emit_settings(window: &WebviewWindow, shared: &Shared) {
+    let _ = window.emit("mascot-settings", settings_payload(shared));
 }
 
 /// TypeScript 側から呼ばれ、クリックスルーの ON/OFF を切り替える
@@ -136,10 +147,35 @@ fn show_context_menu(window: WebviewWindow) {
 
 /// フロントエンドがイベントを受け取れるようになったら呼ばれる。
 /// それより前に送った通知は届いていないので、状態を送り直す
+///
+/// 通知（イベント）は取りこぼすことがあるので、いまの設定は、通知とは別に、この返事としても返す
+/// （メニューは三毛なのに、絵は茶トラのまま、というずれを防ぐ）
 #[tauri::command]
-fn frontend_ready(window: WebviewWindow, shared: State<Arc<Shared>>) {
+fn frontend_ready(window: WebviewWindow, shared: State<Arc<Shared>>) -> SettingsPayload {
     shared.resync.store(true, Ordering::Relaxed);
     emit_settings(&window, &shared);
+    settings_payload(&shared)
+}
+
+/// いまのキャラクターなどの設定を返す。画面側が、念のため定期的に見比べるのに使う
+#[tauri::command]
+fn get_mascot_settings(shared: State<Arc<Shared>>) -> SettingsPayload {
+    settings_payload(&shared)
+}
+
+/// 画面がロックされた・ディスプレイが消えた間は、動きを止める（電池を使わない）。
+/// 状態は 2 秒ごとに見る。戻ったときは、歩き方を計算し直す（止まっていた間の時間で飛ばないように）
+const SCREEN_CHECK: Duration = Duration::from_secs(2);
+
+fn spawn_screen_watcher(shared: Arc<Shared>) {
+    thread::spawn(move || loop {
+        thread::sleep(SCREEN_CHECK);
+        let inactive = system::is_screen_inactive();
+        if shared.paused.swap(inactive, Ordering::Relaxed) && !inactive {
+            shared.reset.store(true, Ordering::Relaxed);
+            shared.resync.store(true, Ordering::Relaxed);
+        }
+    });
 }
 
 /// クリックスルー中は WebView にマウスイベントが届かないため、
@@ -155,7 +191,7 @@ fn spawn_cursor_watcher(app: AppHandle, shared: Arc<Shared>) {
             } else {
                 CURSOR_POLL_FAR
             });
-            if !shared.visible.load(Ordering::Relaxed) {
+            if shared.paused.load(Ordering::Relaxed) || !shared.visible.load(Ordering::Relaxed) {
                 continue;
             }
             let (Some(window), Some(geometry)) =
@@ -251,6 +287,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             set_click_through,
             frontend_ready,
+            get_mascot_settings,
             start_drag,
             show_context_menu,
             bubble::show_bubble,
@@ -270,6 +307,10 @@ pub fn run() {
             notes::list_notes,
             notes::add_note,
             notes::delete_note,
+            general::get_general,
+            general::set_general,
+            options::get_options,
+            options::set_options,
             notes::copy_note_to_clipboard,
             notes::save_clipboard_note,
             weather::get_weather_settings,
@@ -296,6 +337,7 @@ pub fn run() {
                 resync: AtomicBool::new(false),
                 visible: AtomicBool::new(true),
                 suppressed: AtomicBool::new(false),
+                paused: AtomicBool::new(false),
                 geometry: Mutex::new(None),
                 store: Store::load(path),
             });
@@ -310,10 +352,12 @@ pub fn run() {
             window.set_visible_on_all_workspaces(true)?;
             restore(&window, &shared);
 
+            spawn_screen_watcher(shared.clone());
             spawn_cursor_watcher(app.handle().clone(), shared.clone());
             let bubble_state = Arc::new(bubble::BubbleState::new());
             app.manage(bubble_state.clone());
             bubble::spawn_follower(app.handle().clone(), shared.clone(), bubble_state);
+            status::spawn(app.handle().clone(), shared.clone());
             reminder::spawn_scheduler(app.handle().clone(), shared.clone());
             wander::spawn(app.handle().clone(), shared);
             Ok(())

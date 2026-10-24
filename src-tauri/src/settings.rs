@@ -11,7 +11,18 @@ use crate::{
     weather::WeatherSettings,
 };
 
-#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// タイマーの最後の秒読み（10 → 1）をふきだしに出すか
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CountdownMode {
+    /// タイマーごとに、出すかをランダム（半々）に決める
+    #[default]
+    Random,
+    Always,
+    Never,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Speed {
     Slow,
@@ -20,30 +31,12 @@ pub enum Speed {
 }
 
 impl Speed {
-    pub const ALL: [Speed; 3] = [Speed::Slow, Speed::Normal, Speed::Fast];
-
     /// 歩く速さ（論理ピクセル/秒、等倍のとき）
     pub fn px_per_sec(self) -> f64 {
         match self {
             Speed::Slow => 30.0,
             Speed::Normal => 60.0,
             Speed::Fast => 120.0,
-        }
-    }
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Speed::Slow => "ゆっくり",
-            Speed::Normal => "ふつう",
-            Speed::Fast => "はやい",
-        }
-    }
-
-    pub fn id(self) -> &'static str {
-        match self {
-            Speed::Slow => "speed-slow",
-            Speed::Normal => "speed-normal",
-            Speed::Fast => "speed-fast",
         }
     }
 }
@@ -115,7 +108,15 @@ pub struct Settings {
     pub character: Character,
     pub reminders: Vec<Reminder>,
     /// リマインダーの時刻に音を鳴らす
+    /// 時刻になったときに音を鳴らすか（リマインダー / タイマー / ポモドーロ）
     pub reminder_sound: bool,
+    pub timer_sound: bool,
+    pub pomodoro_sound: bool,
+    /// メニューバーに、動いているタイマー / ポモドーロの残り時間を出すか
+    pub menubar_timer: bool,
+    pub menubar_pomodoro: bool,
+    /// タイマーの最後の秒読みをふきだしに出すか
+    pub countdown_mode: CountdownMode,
     pub notes: Vec<Note>,
     /// 動いているポモドーロ（なければ None）
     pub pomodoro: Option<Pomodoro>,
@@ -136,6 +137,11 @@ impl Default for Settings {
             character: Character::Tora,
             reminders: Vec::new(),
             reminder_sound: true,
+            timer_sound: true,
+            pomodoro_sound: true,
+            menubar_timer: true,
+            menubar_pomodoro: true,
+            countdown_mode: CountdownMode::Random,
             notes: Vec::new(),
             pomodoro: None,
             pomodoro_cfg: PomodoroCfg::default(),
@@ -265,5 +271,15 @@ mod tests {
         for c in Character::ALL {
             assert!(c.id().starts_with("char-"));
         }
+    }
+
+    #[test]
+    fn countdown_mode_defaults_to_random_and_roundtrips() {
+        assert_eq!(Settings::default().countdown_mode, CountdownMode::Random);
+        // 古い設定ファイルには、秒読みの設定がない
+        let s: Settings = serde_json::from_str(r#"{"scale":1}"#).unwrap();
+        assert_eq!(s.countdown_mode, CountdownMode::Random);
+        let s: Settings = serde_json::from_str(r#"{"countdown_mode":"never"}"#).unwrap();
+        assert_eq!(s.countdown_mode, CountdownMode::Never);
     }
 }

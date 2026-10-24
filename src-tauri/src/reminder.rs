@@ -11,11 +11,13 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_notification::NotificationExt;
 
-use crate::{about, pomodoro, tray, Shared, MAIN_WINDOW};
+use crate::{about, pomodoro, settings::CountdownMode, tray, Shared, MAIN_WINDOW};
 
 pub const WINDOW: &str = "reminders";
-/// 時刻になったかを調べる間隔
-const CHECK_INTERVAL: Duration = Duration::from_secs(5);
+/// 画面がロックされている間などの、時刻になったかを調べる間隔
+const PAUSED_CHECK_INTERVAL: Duration = Duration::from_secs(2);
+/// 時刻になったかを調べる間隔（タイマーの最後の秒読みを、ほぼ 1 秒ごとに出せる細かさ）
+const CHECK_INTERVAL: Duration = Duration::from_millis(500);
 /// 登録できる内容の長さ。ふきだしには収まらないぶんは省き、全文は通知センターに出す
 pub const MAX_TEXT_CHARS: usize = 100;
 /// 「あとで知らせる」で、もう一度知らせるまでの時間
@@ -445,6 +447,47 @@ pub fn announce(app: &AppHandle, shared: &Shared, text: &str, snooze: bool) {
     }
 }
 
+/// タイマーの最後の秒読みを始める残り時間（ミリ秒）
+const COUNTDOWN_FROM_MS: i64 = 10_000;
+/// タイマーごとに、秒読みをふきだしに出すかを決める確率（%）
+const COUNTDOWN_CHANCE_PERCENT: u64 = 50;
+
+/// 残り時間から、いま出す秒読みの数字（10 → 1）。残りがなければ（時間が来たあと）None
+pub fn countdown_number(remaining_ms: i64) -> Option<u32> {
+    if remaining_ms <= 0 || remaining_ms > COUNTDOWN_FROM_MS {
+        return None;
+    }
+    Some(((remaining_ms + 999) / 1000) as u32)
+}
+
+/// 設定と、0〜99 の乱数から、秒読みを出すかを決める
+pub fn show_countdown(mode: CountdownMode, roll: u64) -> bool {
+    match mode {
+        CountdownMode::Always => true,
+        CountdownMode::Never => false,
+        CountdownMode::Random => roll % 100 < COUNTDOWN_CHANCE_PERCENT,
+    }
+}
+
+/// 標準ライブラリだけで作る乱数（毎回違う値になる）
+fn random_u64() -> u64 {
+    use std::hash::{BuildHasher, Hasher};
+    std::collections::hash_map::RandomState::new()
+        .build_hasher()
+        .finish()
+}
+
+/// 秒読みの数字を、ふつうのおしゃべりのふきだしで出す（マスコットが眠っていても出す）。
+/// マスコットを隠している間は出さない
+fn say_countdown(app: &AppHandle, shared: &Shared, number: u32) {
+    if !shared.visible.load(Ordering::Relaxed) {
+        return;
+    }
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
+        let _ = window.emit("mascot-countdown", number.to_string());
+    }
+}
+
 /// 短いひとことを、ふつうのふきだしで出す（コピーしたよ、など）。見えない間は何もしない
 pub fn toast(app: &AppHandle, text: &str) {
     if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
@@ -465,54 +508,94 @@ fn take_leads(reminders: &mut [Reminder], now: i64) -> Vec<String> {
     texts
 }
 
-/// 5 秒ごとに、時刻になったリマインダーとタイマー、事前に知らせるもの、ポモドーロの区間の終わりを調べる
+/// 0.5 秒ごとに、時刻になったリマインダーとタイマー、事前に知らせるもの、ポモドーロの区間の終わり、
+/// タイマーの最後の秒読み（10 → 1）を調べる。秒読みを出すかは、設定（ランダム／いつも出す／出さない）で決める。ランダムのときは、タイマーごとに半々で決める
 pub fn spawn_scheduler(app: AppHandle, shared: Arc<Shared>) {
-    thread::spawn(move || loop {
-        thread::sleep(CHECK_INTERVAL);
-        let now = now_ms();
-        let mut messages: Vec<(String, bool)> = Vec::new();
-        // 離席で止めたことを知らせるだけのときは、音を鳴らさない
-        let mut sound = false;
+    thread::spawn(move || {
+        // タイマーの ID → （秒読みを出すか, 最後に出した数字）
+        let mut countdowns: std::collections::HashMap<u64, (bool, u32)> =
+            std::collections::HashMap::new();
+        loop {
+            // 画面がロックされている・ディスプレイが消えている間は、確認を粗くする
+            // （秒読みは見る人がいないので不要。リマインダーとタイマーは、2 秒以内に知らせる）
+            thread::sleep(if shared.paused() {
+                PAUSED_CHECK_INTERVAL
+            } else {
+                CHECK_INTERVAL
+            });
+            let now = now_ms();
 
-        let any_lead = shared
-            .store
-            .get()
-            .reminders
-            .iter()
-            .any(|r| r.lead_min > 0 && !r.timer && r.lead_sent != r.at && now < r.at);
-        if any_lead {
-            let mut leads = Vec::new();
-            shared
+            let settings = shared.store.get();
+            let mode = settings.countdown_mode;
+            let timers: Vec<(u64, i64)> = settings
+                .reminders
+                .iter()
+                .filter(|r| r.timer)
+                .map(|r| (r.id, r.at))
+                .collect();
+            countdowns.retain(|id, _| timers.iter().any(|(t, _)| t == id));
+            for (id, at) in timers {
+                let Some(number) = countdown_number(at - now) else {
+                    continue;
+                };
+                let entry = countdowns
+                    .entry(id)
+                    .or_insert_with(|| (show_countdown(mode, random_u64()), 0));
+                if entry.0 && entry.1 != number {
+                    entry.1 = number;
+                    say_countdown(&app, &shared, number);
+                }
+            }
+            let mut messages: Vec<(String, bool)> = Vec::new();
+            // 離席で止めたことを知らせるだけのときは、音を鳴らさない
+            let mut sound = false;
+
+            let any_lead = shared
                 .store
-                .update(|s| leads = take_leads(&mut s.reminders, now));
-            sound |= !leads.is_empty();
-            messages.extend(leads.into_iter().map(|t| (t, false)));
-        }
+                .get()
+                .reminders
+                .iter()
+                .any(|r| r.lead_min > 0 && !r.timer && r.lead_sent != r.at && now < r.at);
+            if any_lead {
+                let mut leads = Vec::new();
+                shared
+                    .store
+                    .update(|s| leads = take_leads(&mut s.reminders, now));
+                sound |= !leads.is_empty() && settings.reminder_sound;
+                messages.extend(leads.into_iter().map(|t| (t, false)));
+            }
 
-        if shared.store.get().reminders.iter().any(|r| r.at <= now) {
-            let mut fired = Vec::new();
-            shared
-                .store
-                .update(|s| fired = take_due(&mut s.reminders, now));
-            tray::refresh_reminders(&app);
-            tray::refresh_timers(&app);
-            sound |= !fired.is_empty();
-            messages.extend(fired.into_iter().map(|r| (r.text, !r.timer)));
-        }
+            if shared.store.get().reminders.iter().any(|r| r.at <= now) {
+                let mut fired = Vec::new();
+                shared
+                    .store
+                    .update(|s| fired = take_due(&mut s.reminders, now));
+                tray::refresh_reminders(&app);
+                tray::refresh_timers(&app);
+                sound |= fired.iter().any(|r| {
+                    if r.timer {
+                        settings.timer_sound
+                    } else {
+                        settings.reminder_sound
+                    }
+                });
+                messages.extend(fired.into_iter().map(|r| (r.text, !r.timer)));
+            }
 
-        if let Some((text, with_sound)) = pomodoro::tick(&app, &shared, now) {
-            sound |= with_sound;
-            messages.push((text, false));
-        }
+            if let Some((text, with_sound)) = pomodoro::tick(&app, &shared, now) {
+                sound |= with_sound && settings.pomodoro_sound;
+                messages.push((text, false));
+            }
 
-        if messages.is_empty() {
-            continue;
-        }
-        if sound && shared.store.get().reminder_sound {
-            play_sound();
-        }
-        for (text, snooze) in messages {
-            announce(&app, &shared, &text, snooze);
+            if messages.is_empty() {
+                continue;
+            }
+            if sound {
+                play_sound();
+            }
+            for (text, snooze) in messages {
+                announce(&app, &shared, &text, snooze);
+            }
         }
     });
 }
@@ -529,7 +612,7 @@ pub fn open_window(app: &AppHandle, tab: &str) {
     let url = format!("reminders.html?tab={tab}");
     let window = WebviewWindowBuilder::new(app, WINDOW, WebviewUrl::App(url.into()))
         .title("Desktop Mascot")
-        .inner_size(420.0, 600.0)
+        .inner_size(460.0, 620.0)
         .min_inner_size(360.0, 420.0)
         .center()
         .always_on_top(true)
@@ -754,5 +837,36 @@ mod tests {
             ..r(1, 10 * 60_000, Repeat::Once)
         }];
         assert!(take_leads(&mut list, 6 * 60_000).is_empty());
+    }
+
+    #[test]
+    fn countdown_numbers_run_from_ten_to_one() {
+        assert_eq!(countdown_number(10_001), None);
+        assert_eq!(countdown_number(10_000), Some(10));
+        assert_eq!(countdown_number(9_001), Some(10));
+        assert_eq!(countdown_number(9_000), Some(9));
+        assert_eq!(countdown_number(1_001), Some(2));
+        assert_eq!(countdown_number(1_000), Some(1));
+        assert_eq!(countdown_number(1), Some(1));
+        assert_eq!(countdown_number(0), None);
+        assert_eq!(countdown_number(-500), None);
+    }
+
+    #[test]
+    fn countdown_random_shows_for_about_half_of_the_rolls() {
+        let shown = (0..100)
+            .filter(|&n| show_countdown(CountdownMode::Random, n))
+            .count();
+        assert_eq!(shown, 50);
+        assert!(show_countdown(CountdownMode::Random, 0));
+        assert!(!show_countdown(CountdownMode::Random, 99));
+    }
+
+    #[test]
+    fn countdown_always_and_never_ignore_the_roll() {
+        for roll in [0, 49, 50, 99, 12345] {
+            assert!(show_countdown(CountdownMode::Always, roll));
+            assert!(!show_countdown(CountdownMode::Never, roll));
+        }
     }
 }

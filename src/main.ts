@@ -256,15 +256,19 @@ on<FlagPayload>("mascot-suppress", (e) => {
   }
 });
 
-on<SettingsPayload>("mascot-settings", (e) => {
-  chatty = e.payload.chatty;
+/// Rust 側の設定（キャラクターとおしゃべり）を、絵と動きに反映する。
+/// 通知（イベント）で届くほか、起動直後の返事と、定期的な見比べでも呼ぶ
+function applySettings(payload: SettingsPayload) {
+  chatty = payload.chatty;
   if (!chatty) bubble.hide();
-  const next = CHARACTERS.find((c) => c === e.payload.character) ?? "tora";
+  const next = CHARACTERS.find((c) => c === payload.character) ?? "tora";
   if (next !== character) {
     character = next;
     renderSprite(mascot, character);
   }
-});
+}
+
+on<SettingsPayload>("mascot-settings", (e) => applySettings(e.payload));
 
 on<Announce>("mascot-reminder", (e) => {
   // 全画面アプリの上などで姿が見えない間は、通知センターに出す
@@ -305,6 +309,11 @@ async function checkWeather(force: boolean) {
 }
 
 on("weather-now", () => void checkWeather(true));
+
+// タイマーの最後の秒読み（10 → 1）。眠っていても出す
+on<string>("mascot-countdown", (e) => {
+  if (!suppressed && !reminderShown) bubble.say(e.payload);
+});
 
 on<SayPayload>("mascot-say", (e) => {
   say(e.payload.kind);
@@ -400,4 +409,15 @@ window.addEventListener("mouseup", (e) => {
 
 // 受け取りの準備がすべて片付いたら（失敗したものがあっても）、
 // 起動直後に送られて取りこぼした状態を送り直してもらう
-void Promise.all(listening).then(() => invoke("frontend_ready"));
+// 返事にも、いまの設定が入っている（通知を取りこぼしても、これで追いつく）
+void Promise.all(listening).then(() =>
+  invoke<SettingsPayload>("frontend_ready").then(applySettings),
+);
+
+/// 念のため、60 秒に 1 回、Rust 側の設定と見比べる（違っていれば描き直す。同じなら何もしない）
+const SETTINGS_CHECK_MS = 60_000;
+window.setInterval(() => {
+  invoke<SettingsPayload>("get_mascot_settings")
+    .then(applySettings)
+    .catch((err) => console.error("設定を取得できません", err));
+}, SETTINGS_CHECK_MS);

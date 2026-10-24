@@ -28,6 +28,8 @@ const GAP: f64 = 4.0;
 /// 追いかける間隔
 const FOLLOW_INTERVAL: Duration = Duration::from_millis(33);
 /// ふきだしを出していない間の見回りの間隔
+/// 画面がロックされている・ディスプレイが消えている間の、確認の間隔
+const PAUSED_INTERVAL: Duration = Duration::from_secs(1);
 const IDLE_INTERVAL: Duration = Duration::from_millis(250);
 
 /// いま出しているふきだしの状態
@@ -220,6 +222,11 @@ pub fn spawn_follower(app: AppHandle, shared: Arc<Shared>, state: Arc<BubbleStat
         // 前回位置を合わせたときの、マスコットの位置・大きさと、ふきだしの大きさ
         let mut last: Option<(Rect, (f64, f64))> = None;
         loop {
+            // 画面がロックされている・ディスプレイが消えている間は、追いかけない
+            if shared.paused() {
+                thread::sleep(PAUSED_INTERVAL);
+                continue;
+            }
             let visible = state.visible.load(Ordering::Relaxed);
             thread::sleep(if visible {
                 FOLLOW_INTERVAL

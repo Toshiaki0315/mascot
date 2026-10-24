@@ -27,6 +27,8 @@ const IDLE_TICK: Duration = Duration::from_millis(100);
 const WINDOW_CHECK: Duration = Duration::from_millis(1000);
 /// 窓の上に乗っている間は、窓が動いたり閉じたりしたのを早めに知りたい
 const WINDOW_CHECK_PERCHED: Duration = Duration::from_millis(250);
+/// 画面がロックされている・ディスプレイが消えている間の、確認の間隔
+const PAUSED_TICK: Duration = Duration::from_millis(1000);
 /// 眠る・起きる、休憩の声かけの確認の間隔
 const SLEEP_CHECK: Duration = Duration::from_millis(250);
 
@@ -768,8 +770,14 @@ pub fn spawn(app: AppHandle, shared: Arc<Shared>) {
         let Some(window) = app.get_webview_window(MAIN_WINDOW) else {
             return;
         };
+        let paused = shared.clone();
         let mut brain = Brain::new(window, shared);
         loop {
+            // 画面がロックされている・ディスプレイが消えている間は、何も計算せず、ゆっくり待つ
+            if paused.paused.load(Ordering::Relaxed) {
+                thread::sleep(PAUSED_TICK);
+                continue;
+            }
             thread::sleep(brain.interval());
             brain.tick();
         }

@@ -4,6 +4,7 @@
 use core_foundation::{
     array::{CFArray, CFArrayRef},
     base::{CFType, TCFType},
+    boolean::CFBoolean,
     dictionary::{CFDictionary, CFDictionaryRef},
     number::CFNumber,
     string::CFString,
@@ -37,6 +38,9 @@ extern "C" {
     fn CGRectMakeWithDictionaryRepresentation(dict: CFDictionaryRef, rect: *mut CGRect) -> bool;
     fn CGEventSourceSecondsSinceLastEventType(state: i32, event_type: u32) -> f64;
     fn CGEventSourceButtonState(state: i32, button: u32) -> bool;
+    fn CGMainDisplayID() -> u32;
+    fn CGDisplayIsAsleep(display: u32) -> i32;
+    fn CGSessionCopyCurrentDictionary() -> CFDictionaryRef;
 }
 
 /// キーボード・マウスなど、最後に何か入力されてからの秒数
@@ -47,6 +51,47 @@ pub fn seconds_since_last_input() -> f64 {
             K_CG_ANY_INPUT_EVENT_TYPE,
         )
     }
+}
+
+/// メイン画面のディスプレイが、スリープ（消灯）しているか
+pub fn is_display_asleep() -> bool {
+    unsafe { CGDisplayIsAsleep(CGMainDisplayID()) != 0 }
+}
+
+/// ログインセッションの情報（画面ロック中か、いまこのセッションが前面か）の、真偽の項目を読む
+fn session_flag(key: &str) -> Option<bool> {
+    let raw = unsafe { CGSessionCopyCurrentDictionary() };
+    if raw.is_null() {
+        return None;
+    }
+    let dict: CFDictionary<CFString, CFType> = unsafe { CFDictionary::wrap_under_create_rule(raw) };
+    dict.find(CFString::new(key))
+        .and_then(|v| v.downcast::<CFBoolean>())
+        .map(bool::from)
+}
+
+/// 画面ロックの最中か
+pub fn is_screen_locked() -> bool {
+    session_flag("CGSSessionScreenIsLocked").unwrap_or(false)
+}
+
+/// いま、このセッションが前面（コンソール）にいないか（ユーザーの切り替えで、別のユーザーが使っている間）
+pub fn is_session_in_background() -> bool {
+    session_flag("kCGSSessionOnConsoleKey") == Some(false)
+}
+
+/// 画面を誰も見ていない状態か：ディスプレイが消えている、画面がロックされている、
+/// 別のユーザーに切り替わっている。この間は、マスコットの動きを止めてよい
+pub fn is_screen_inactive() -> bool {
+    inactive(
+        is_display_asleep(),
+        is_screen_locked(),
+        is_session_in_background(),
+    )
+}
+
+fn inactive(display_asleep: bool, locked: bool, in_background: bool) -> bool {
+    display_asleep || locked || in_background
 }
 
 /// マウスの左ボタンが押されているか（ドラッグの終わりを知るために使う）
@@ -200,5 +245,25 @@ mod tests {
         assert!(is_covered_in_front(&list, 1, (50.0, 50.0)));
         assert!(!is_covered_in_front(&list, 1, (300.0, 300.0)));
         assert!(!is_covered_in_front(&list, 0, (50.0, 50.0)));
+    }
+
+    #[test]
+    fn inactive_when_any_reason_applies() {
+        assert!(!inactive(false, false, false));
+        assert!(inactive(true, false, false));
+        assert!(inactive(false, true, false));
+        assert!(inactive(false, false, true));
+    }
+
+    #[test]
+    fn the_real_session_calls_do_not_crash() {
+        // 実機の状態はわからないが、呼べること（クラッシュしないこと）は確かめる
+        eprintln!(
+            "display asleep={} locked={} in background={}",
+            is_display_asleep(),
+            is_screen_locked(),
+            is_session_in_background()
+        );
+        let _ = is_screen_inactive();
     }
 }

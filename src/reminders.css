@@ -224,7 +224,7 @@ li.editing {
 }
 .tabs button {
   font: inherit;
-  padding: 7px 9px;
+  padding: 7px 8px;
   white-space: nowrap;
   color: var(--muted);
   background: transparent;
@@ -323,6 +323,10 @@ input[type="number"] {
 .buttons button:disabled {
   opacity: 0.45;
   cursor: default;
+}
+.options {
+  display: grid;
+  gap: 12px;
 }
 .pomo-cfg {
   display: grid;

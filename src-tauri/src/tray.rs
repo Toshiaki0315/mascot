@@ -10,13 +10,12 @@ use tauri::{
     tray::TrayIconBuilder,
     AppHandle, Emitter, Manager, WebviewWindow, Wry,
 };
-use tauri_plugin_autostart::ManagerExt;
 
 use crate::{
-    about, apply_scale, bubble, emit_settings, notes, pomodoro,
+    about, bubble, emit_settings, notes, pomodoro,
     reminder::{self, Reminder, Repeat},
     save_current_position,
-    settings::{Character, Speed, SCALES},
+    settings::Character,
     Shared, MAIN_WINDOW,
 };
 
@@ -50,14 +49,7 @@ impl DynamicMenu {
 
 /// メニュー項目のチェック状態を後から書き換えるために持っておく
 struct TrayItems {
-    walking: CheckMenuItem<Wry>,
-    speeds: Vec<(Speed, CheckMenuItem<Wry>)>,
-    scales: Vec<(f64, CheckMenuItem<Wry>)>,
     characters: Vec<(Character, CheckMenuItem<Wry>)>,
-    fullscreen: CheckMenuItem<Wry>,
-    chatty: CheckMenuItem<Wry>,
-    autostart: CheckMenuItem<Wry>,
-    reminder_sound: CheckMenuItem<Wry>,
     /// 「リマインダー」のサブメニューと、その中の直近の予定の行（予定が変わるたびに作り直す）
     reminder_menu: Submenu<Wry>,
     reminder_rows: Mutex<Vec<MenuItem<Wry>>>,
@@ -68,13 +60,8 @@ struct TrayItems {
     menu: Menu<Wry>,
 }
 
-fn scale_id(scale: f64) -> String {
-    format!("scale-{scale}")
-}
-
 pub fn setup(app: &tauri::App, shared: &Arc<Shared>) -> tauri::Result<()> {
     let settings = shared.store.get();
-    let autostart_enabled = app.autolaunch().is_enabled().unwrap_or(false);
 
     let about = MenuItem::with_id(
         app,
@@ -140,63 +127,6 @@ pub fn setup(app: &tauri::App, shared: &Arc<Shared>) -> tauri::Result<()> {
             &open_item("weather-now", "今日の天気を見る")?,
         ],
     )?;
-    let walking = CheckMenuItem::with_id(
-        app,
-        "walking",
-        "歩き回る",
-        true,
-        settings.walking,
-        None::<&str>,
-    )?;
-
-    let speeds = Speed::ALL
-        .iter()
-        .map(|&speed| {
-            CheckMenuItem::with_id(
-                app,
-                speed.id(),
-                speed.label(),
-                true,
-                settings.speed == speed,
-                None::<&str>,
-            )
-            .map(|item| (speed, item))
-        })
-        .collect::<tauri::Result<Vec<_>>>()?;
-    let speed_menu = Submenu::with_items(
-        app,
-        "歩く速さ",
-        true,
-        &speeds
-            .iter()
-            .map(|(_, item)| item as &dyn tauri::menu::IsMenuItem<Wry>)
-            .collect::<Vec<_>>(),
-    )?;
-
-    let scales = SCALES
-        .iter()
-        .map(|&scale| {
-            CheckMenuItem::with_id(
-                app,
-                scale_id(scale),
-                format!("{scale} 倍"),
-                true,
-                settings.scale == scale,
-                None::<&str>,
-            )
-            .map(|item| (scale, item))
-        })
-        .collect::<tauri::Result<Vec<_>>>()?;
-    let scale_menu = Submenu::with_items(
-        app,
-        "大きさ",
-        true,
-        &scales
-            .iter()
-            .map(|(_, item)| item as &dyn tauri::menu::IsMenuItem<Wry>)
-            .collect::<Vec<_>>(),
-    )?;
-
     let characters = Character::ALL
         .iter()
         .map(|&character| {
@@ -221,38 +151,6 @@ pub fn setup(app: &tauri::App, shared: &Arc<Shared>) -> tauri::Result<()> {
             .collect::<Vec<_>>(),
     )?;
 
-    let chatty = CheckMenuItem::with_id(
-        app,
-        "chatty",
-        "おしゃべり",
-        true,
-        settings.chatty,
-        None::<&str>,
-    )?;
-    let reminder_sound = CheckMenuItem::with_id(
-        app,
-        "reminder-sound",
-        "リマインダーの音",
-        true,
-        settings.reminder_sound,
-        None::<&str>,
-    )?;
-    let fullscreen = CheckMenuItem::with_id(
-        app,
-        "hide-on-fullscreen",
-        "全画面アプリの上では隠れる",
-        true,
-        settings.hide_on_fullscreen,
-        None::<&str>,
-    )?;
-    let autostart = CheckMenuItem::with_id(
-        app,
-        "autostart",
-        "ログイン時に起動",
-        true,
-        autostart_enabled,
-        None::<&str>,
-    )?;
     let quit = MenuItem::with_id(app, "quit", "終了", true, None::<&str>)?;
 
     let menu = Menu::with_items(
@@ -269,28 +167,15 @@ pub fn setup(app: &tauri::App, shared: &Arc<Shared>) -> tauri::Result<()> {
             &weather_menu,
             &PredefinedMenuItem::separator(app)?,
             &character_menu,
-            &walking,
-            &speed_menu,
-            &scale_menu,
-            &chatty,
-            &reminder_sound,
-            &fullscreen,
             &PredefinedMenuItem::separator(app)?,
-            &autostart,
+            &open_item("tools-general", "設定…")?,
             &PredefinedMenuItem::separator(app)?,
             &quit,
         ],
     )?;
 
     app.manage(TrayItems {
-        walking,
-        speeds,
-        scales,
         characters,
-        fullscreen,
-        chatty,
-        autostart,
-        reminder_sound,
         reminder_menu,
         reminder_rows: Mutex::new(Vec::new()),
         timers: DynamicMenu::new(timer_menu),
@@ -556,6 +441,7 @@ fn on_menu(app: &AppHandle, id: &str) {
         }
         id if id.starts_with("reminders") => reminder::open_window(app, "reminders"),
         id if id.starts_with("tools-timers") => reminder::open_window(app, "timers"),
+        "tools-general" => reminder::open_window(app, "general"),
         "tools-pomodoro" => reminder::open_window(app, "pomodoro"),
         "tools-weather" => reminder::open_window(app, "weather"),
         "tools-notes" => reminder::open_window(app, "notes"),
@@ -603,38 +489,6 @@ fn on_menu(app: &AppHandle, id: &str) {
             shared.visible.store(visible, Ordering::Relaxed);
             shared.store.update(|s| s.visible = visible);
         }
-        "walking" => {
-            let on = items.walking.is_checked().unwrap_or(true);
-            shared.store.update(|s| s.walking = on);
-        }
-        "chatty" => {
-            let on = items.chatty.is_checked().unwrap_or(true);
-            shared.store.update(|s| s.chatty = on);
-            emit_settings(&window, &shared);
-        }
-        "reminder-sound" => {
-            let on = items.reminder_sound.is_checked().unwrap_or(true);
-            shared.store.update(|s| s.reminder_sound = on);
-        }
-        "hide-on-fullscreen" => {
-            let on = items.fullscreen.is_checked().unwrap_or(true);
-            shared.store.update(|s| s.hide_on_fullscreen = on);
-        }
-        "autostart" => {
-            let on = items.autostart.is_checked().unwrap_or(false);
-            let launcher = app.autolaunch();
-            let result = if on {
-                launcher.enable()
-            } else {
-                launcher.disable()
-            };
-            // 登録に失敗したらチェックを実際の状態に戻す
-            if result.is_err() {
-                let _ = items
-                    .autostart
-                    .set_checked(launcher.is_enabled().unwrap_or(false));
-            }
-        }
         "quit" => {
             save_current_position(&window, &shared);
             app.exit(0);
@@ -647,19 +501,6 @@ fn on_menu(app: &AppHandle, id: &str) {
                 }
                 shared.store.update(|s| s.character = character);
                 emit_settings(&window, &shared);
-            } else if let Some(&(speed, _)) = items.speeds.iter().find(|(s, _)| s.id() == id) {
-                for (s, item) in &items.speeds {
-                    let _ = item.set_checked(*s == speed);
-                }
-                shared.store.update(|s| s.speed = speed);
-            } else if let Some(&(scale, _)) = items.scales.iter().find(|(s, _)| scale_id(*s) == id)
-            {
-                for (s, item) in &items.scales {
-                    let _ = item.set_checked(*s == scale);
-                }
-                apply_scale(&window, scale);
-                shared.store.update(|s| s.scale = scale);
-                save_current_position(&window, &shared);
             }
         }
     }

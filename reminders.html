@@ -9,6 +9,7 @@
   <body>
     <main>
       <nav class="tabs" role="tablist">
+        <button type="button" role="tab" data-tab="general">一般</button>
         <button type="button" role="tab" data-tab="reminders">リマインダー</button>
         <button type="button" role="tab" data-tab="timers">タイマー</button>
         <button type="button" role="tab" data-tab="pomodoro">ポモドーロ</button>
@@ -16,7 +17,34 @@
         <button type="button" role="tab" data-tab="weather">天気</button>
       </nav>
 
-      <section class="panel" data-panel="reminders">
+      <section class="panel" data-panel="general" hidden>
+        <form id="general-form" class="options">
+          <label class="check"><input type="checkbox" data-general="walking" /> 歩き回る</label>
+          <label>
+            歩く速さ
+            <select data-general="speed">
+              <option value="slow">ゆっくり</option>
+              <option value="normal">ふつう</option>
+              <option value="fast">はやい</option>
+            </select>
+          </label>
+          <label>
+            大きさ
+            <select data-general="scale">
+              <option value="0.5">0.5 倍</option>
+              <option value="1">1 倍</option>
+              <option value="2">2 倍</option>
+            </select>
+          </label>
+          <label class="check"><input type="checkbox" data-general="chatty" /> おしゃべり（ふきだしで話す）</label>
+          <label class="check"><input type="checkbox" data-general="hide_on_fullscreen" /> 全画面アプリの上では隠れる</label>
+          <label class="check"><input type="checkbox" data-general="autostart" /> ログイン時に起動</label>
+          <p id="general-error" class="error" role="alert"></p>
+        </form>
+        <p class="note">キャラクターは、メニューバーのネコのアイコンのメニューから選びます。</p>
+      </section>
+
+      <section class="panel" data-panel="reminders" hidden>
       <form id="form" autocomplete="off">
         <label>
           内容
@@ -89,6 +117,9 @@
       <ul id="list"></ul>
       <p id="empty">リマインダーはありません</p>
     
+
+      <h2 class="section-title">設定</h2>
+      <label class="check"><input type="checkbox" data-option="reminder_sound" /> 時刻になったら音を鳴らす</label>
       </section>
 
       <section class="panel" data-panel="timers" hidden>
@@ -117,6 +148,20 @@
         <ul id="timer-list"></ul>
         <p id="timer-empty" class="empty">動いているタイマーはありません</p>
 
+        <h3>設定</h3>
+        <div class="options">
+          <label class="check"><input type="checkbox" data-option="timer_sound" /> 終わったら音を鳴らす</label>
+          <label class="check"><input type="checkbox" data-option="menubar_timer" /> メニューバーに残り時間を出す</label>
+          <label>
+            最後の秒読み（10 → 1）をふきだしに出す
+            <select data-option="countdown_mode">
+              <option value="random">ランダム（タイマーごとに半々）</option>
+              <option value="always">いつも出す</option>
+              <option value="never">出さない</option>
+            </select>
+          </label>
+        </div>
+
       </section>
 
       <section class="panel" data-panel="pomodoro" hidden>
@@ -135,6 +180,12 @@
           <p id="pomo-error" class="error" role="alert"></p>
           <div class="buttons"><button type="submit">設定を保存</button></div>
         </form>
+
+        <h3>設定</h3>
+        <div class="options">
+          <label class="check"><input type="checkbox" data-option="pomodoro_sound" /> 区間が変わるときに音を鳴らす</label>
+          <label class="check"><input type="checkbox" data-option="menubar_pomodoro" /> メニューバーに残り時間を出す</label>
+        </div>
       </section>
 
       <section class="panel" data-panel="notes" hidden>
@@ -181,6 +232,8 @@
       </section>
     </main>
     <script type="module" src="/src/tabs.ts"></script>
+    <script type="module" src="/src/options.ts"></script>
+    <script type="module" src="/src/general.ts"></script>
     <script type="module" src="/src/reminders.ts"></script>
     <script type="module" src="/src/timers.ts"></script>
     <script type="module" src="/src/notes.ts"></script>
