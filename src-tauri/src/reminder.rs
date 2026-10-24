@@ -30,6 +30,8 @@ const MAX_REMINDERS: usize = 100;
 const MAX_TIMER_MIN: u32 = 24 * 60;
 
 const DAY_MS: i64 = 24 * 60 * 60 * 1000;
+/// `advance_days` で進める回数の上限（毎日のリマインダーなら、約 55 年分）
+const MAX_ADVANCE_STEPS: i64 = 20_000;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -46,13 +48,13 @@ pub enum Repeat {
 }
 
 impl Repeat {
-    /// 一定の間隔でくり返すものの間隔。曜日指定は間隔が一定でないので None
-    fn period_ms(self) -> Option<i64> {
+    /// 何日おきにくり返すか。曜日指定と毎月は、日数が一定でないので None
+    fn step_days(self) -> Option<i64> {
         match self {
             Repeat::Once | Repeat::Days | Repeat::Monthly => None,
-            Repeat::Daily => Some(DAY_MS),
-            Repeat::Weekly => Some(7 * DAY_MS),
-            Repeat::Biweekly => Some(14 * DAY_MS),
+            Repeat::Daily => Some(1),
+            Repeat::Weekly => Some(7),
+            Repeat::Biweekly => Some(14),
         }
     }
 }
@@ -168,6 +170,31 @@ pub fn next_monthly<Tz: TimeZone>(
     at
 }
 
+/// 現地の時計で、`at` と同じ時刻の、`step_days` 日おきの日のうち、`now` より後の最初の日時。
+/// 24 時間ずつ足すと、夏時間の切り替えをまたいだときに、現地の時刻が 1 時間ずれるので、
+/// 現地のカレンダーの日付を進めて、時刻を合わせ直す
+pub fn advance_days<Tz: TimeZone>(tz: &Tz, at: i64, step_days: i64, now: i64) -> i64 {
+    let Some(base) = tz.timestamp_millis_opt(at).single() else {
+        return at + step_days * DAY_MS;
+    };
+    // 何年も止めていても、現実的な回数で終わるよう、上限を置く
+    for k in 1..=MAX_ADVANCE_STEPS {
+        let naive = (base.date_naive() + ChronoDuration::days(step_days * k)).and_time(base.time());
+        // 夏時間の切り替えで、その時刻が存在しない日（時計が飛ぶ）は、1 時間後にずらす
+        let local = tz.from_local_datetime(&naive).earliest().or_else(|| {
+            tz.from_local_datetime(&(naive + ChronoDuration::hours(1)))
+                .earliest()
+        });
+        if let Some(local) = local {
+            let ms = local.timestamp_millis();
+            if ms > now {
+                return ms;
+            }
+        }
+    }
+    at + step_days * DAY_MS * MAX_ADVANCE_STEPS
+}
+
 pub fn now_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -188,7 +215,7 @@ fn take_due_in<Tz: TimeZone>(tz: &Tz, list: &mut Vec<Reminder>, now: i64) -> Vec
             return true;
         }
         fired.push(r.clone());
-        match (r.repeat, r.repeat.period_ms()) {
+        match (r.repeat, r.repeat.step_days()) {
             (Repeat::Days, _) => {
                 r.at = next_on_days(tz, r.at, r.days, now, true);
                 true
@@ -197,8 +224,8 @@ fn take_due_in<Tz: TimeZone>(tz: &Tz, list: &mut Vec<Reminder>, now: i64) -> Vec
                 r.at = next_monthly(tz, r.at, u32::from(r.days), now, true);
                 true
             }
-            (_, Some(period)) => {
-                r.at += ((now - r.at) / period + 1) * period;
+            (_, Some(step)) => {
+                r.at = advance_days(tz, r.at, step, now);
                 true
             }
             (_, None) => false,
@@ -216,6 +243,15 @@ fn sorted(mut list: Vec<Reminder>) -> Vec<Reminder> {
 #[tauri::command]
 pub fn list_reminders(shared: State<Arc<Shared>>) -> Vec<Reminder> {
     sorted(shared.store.get().reminders)
+}
+
+/// リマインダー（タイマーとスヌーズも含む）を、もう 1 つ足せるか
+fn has_room(count: usize) -> bool {
+    count < MAX_REMINDERS
+}
+
+fn too_many() -> String {
+    format!("リマインダーとタイマーは、合わせて {MAX_REMINDERS} 件までです。いらないものを消してください")
 }
 
 /// 事前に知らせる時間は、最長 1 日前まで
@@ -270,9 +306,9 @@ pub fn add_reminder(
 ) -> Result<Vec<Reminder>, String> {
     let (text, at, days) = validate(&text, at, repeat, days)?;
     check_lead(lead_min)?;
-    let mut result = Err("リマインダーが多すぎます".to_string());
+    let mut result = Err(too_many());
     shared.store.update(|s| {
-        if s.reminders.len() >= MAX_REMINDERS {
+        if !has_room(s.reminders.len()) {
             return;
         }
         let id = s.reminders.iter().map(|r| r.id).max().unwrap_or(0) + 1;
@@ -321,8 +357,16 @@ pub fn update_reminder(
 
 /// 「あとで知らせる」：同じ内容を、5 分後に 1 回だけ知らせる
 #[tauri::command]
-pub fn snooze_reminder(app: AppHandle, shared: State<Arc<Shared>>, text: String) {
+pub fn snooze_reminder(
+    app: AppHandle,
+    shared: State<Arc<Shared>>,
+    text: String,
+) -> Result<(), String> {
+    let mut added = false;
     shared.store.update(|s| {
+        if !has_room(s.reminders.len()) {
+            return;
+        }
         let id = s.reminders.iter().map(|r| r.id).max().unwrap_or(0) + 1;
         s.reminders.push(Reminder::new(
             id,
@@ -331,8 +375,14 @@ pub fn snooze_reminder(app: AppHandle, shared: State<Arc<Shared>>, text: String)
             Repeat::Once,
             0,
         ));
+        added = true;
     });
     tray::refresh_reminders(&app);
+    if added {
+        Ok(())
+    } else {
+        Err(too_many())
+    }
 }
 
 /// カウントダウンのタイマーを始める（時間が来たら、ふきだしと通知で知らせる）
@@ -354,7 +404,11 @@ pub fn add_timer(
     } else {
         format!("{label}：時間です")
     };
+    let mut added = false;
     shared.store.update(|s| {
+        if !has_room(s.reminders.len()) {
+            return;
+        }
         let id = s.reminders.iter().map(|r| r.id).max().unwrap_or(0) + 1;
         s.reminders.push(Reminder {
             timer: true,
@@ -366,7 +420,11 @@ pub fn add_timer(
                 0,
             )
         });
+        added = true;
     });
+    if !added {
+        return Err(too_many());
+    }
     tray::refresh_timers(app);
     Ok(sorted(shared.store.get().reminders))
 }
@@ -428,9 +486,16 @@ struct Announce {
     snooze: bool,
 }
 
+/// ふきだしで知らせられる状態か。マスコットを隠している間と、画面がロックされている・
+/// ディスプレイが消えている間は、誰も見ていない。ふきだしに送ると、自動で閉じる 5 分のうちに
+/// 気づけないので、通知センターに出す（通知は残る）
+fn bubble_visible(mascot_visible: bool, screen_paused: bool) -> bool {
+    mascot_visible && !screen_paused
+}
+
 /// マスコットのふきだしで知らせる。マスコットを非表示にしている間は、通知センターに出す
 pub fn announce(app: &AppHandle, shared: &Shared, text: &str, snooze: bool) {
-    let visible = shared.visible.load(Ordering::Relaxed);
+    let visible = bubble_visible(shared.visible.load(Ordering::Relaxed), shared.paused());
     if !visible {
         notify(app, text);
     }
@@ -645,7 +710,7 @@ mod tests {
     #[test]
     fn once_is_removed_after_firing() {
         let mut list = vec![r(1, 100, Repeat::Once), r(2, 200, Repeat::Once)];
-        let fired = take_due(&mut list, 150);
+        let fired = take_due_in(&jst(), &mut list, 150);
         assert_eq!(fired.len(), 1);
         assert_eq!(fired[0].id, 1);
         assert_eq!(list.len(), 1);
@@ -655,14 +720,14 @@ mod tests {
     #[test]
     fn nothing_due_changes_nothing() {
         let mut list = vec![r(1, 100, Repeat::Daily)];
-        assert!(take_due(&mut list, 99).is_empty());
+        assert!(take_due_in(&jst(), &mut list, 99).is_empty());
         assert_eq!(list[0].at, 100);
     }
 
     #[test]
     fn daily_moves_to_next_day() {
         let mut list = vec![r(1, 1000, Repeat::Daily)];
-        let fired = take_due(&mut list, 1000);
+        let fired = take_due_in(&jst(), &mut list, 1000);
         assert_eq!(fired.len(), 1);
         assert_eq!(list[0].at, 1000 + DAY_MS);
     }
@@ -672,7 +737,7 @@ mod tests {
         // 3 日半ぶりに起動した
         let mut list = vec![r(1, 1000, Repeat::Daily)];
         let now = 1000 + 3 * DAY_MS + DAY_MS / 2;
-        assert_eq!(take_due(&mut list, now).len(), 1);
+        assert_eq!(take_due_in(&jst(), &mut list, now).len(), 1);
         assert_eq!(list[0].at, 1000 + 4 * DAY_MS);
         assert!(list[0].at > now);
     }
@@ -680,14 +745,17 @@ mod tests {
     #[test]
     fn weekly_moves_by_a_week() {
         let mut list = vec![r(1, 0, Repeat::Weekly)];
-        take_due(&mut list, 1);
+        take_due_in(&jst(), &mut list, 1);
         assert_eq!(list[0].at, 7 * DAY_MS);
     }
 
     #[test]
     fn fired_are_in_time_order() {
         let mut list = vec![r(1, 300, Repeat::Once), r(2, 100, Repeat::Once)];
-        let ids: Vec<_> = take_due(&mut list, 500).iter().map(|r| r.id).collect();
+        let ids: Vec<_> = take_due_in(&jst(), &mut list, 500)
+            .iter()
+            .map(|r| r.id)
+            .collect();
         assert_eq!(ids, vec![2, 1]);
     }
 
@@ -737,7 +805,7 @@ mod tests {
     #[test]
     fn biweekly_moves_by_two_weeks() {
         let mut list = vec![r(1, 0, Repeat::Biweekly)];
-        take_due(&mut list, 1);
+        take_due_in(&jst(), &mut list, 1);
         assert_eq!(list[0].at, 14 * DAY_MS);
     }
 
@@ -868,5 +936,76 @@ mod tests {
             assert!(show_countdown(CountdownMode::Always, roll));
             assert!(!show_countdown(CountdownMode::Never, roll));
         }
+    }
+
+    // 夏時間のある地域（ニューヨーク）で、現地の時刻が 1 時間ずれないことを確かめる
+    fn ny(y: i32, m: u32, d: u32, h: u32) -> i64 {
+        chrono_tz::America::New_York
+            .with_ymd_and_hms(y, m, d, h, 0, 0)
+            .unwrap()
+            .timestamp_millis()
+    }
+
+    #[test]
+    fn daily_keeps_the_local_time_across_the_spring_dst_change() {
+        // 2026-03-08 に夏時間が始まる（その日は 23 時間しかない）
+        let mut list = vec![r(1, ny(2026, 3, 7, 9), Repeat::Daily)];
+        let fired = take_due_in(&chrono_tz::America::New_York, &mut list, ny(2026, 3, 7, 9));
+        assert_eq!(fired.len(), 1);
+        assert_eq!(list[0].at, ny(2026, 3, 8, 9));
+        assert_eq!(ny(2026, 3, 8, 9) - ny(2026, 3, 7, 9), 23 * 60 * 60 * 1000);
+    }
+
+    #[test]
+    fn weekly_keeps_the_local_time_across_the_fall_dst_change() {
+        // 2026-11-01 に夏時間が終わる（その日は 25 時間ある）
+        let mut list = vec![r(1, ny(2026, 10, 28, 9), Repeat::Weekly)];
+        take_due_in(
+            &chrono_tz::America::New_York,
+            &mut list,
+            ny(2026, 10, 28, 9),
+        );
+        assert_eq!(list[0].at, ny(2026, 11, 4, 9));
+    }
+
+    #[test]
+    fn advance_days_skips_a_local_time_that_does_not_exist() {
+        // 夏時間が始まる日の 2:30 は存在しない。1 時間ずらして 3:30 にする
+        let at = chrono_tz::America::New_York
+            .with_ymd_and_hms(2026, 3, 7, 2, 30, 0)
+            .unwrap()
+            .timestamp_millis();
+        let next = advance_days(&chrono_tz::America::New_York, at, 1, at);
+        let want = chrono_tz::America::New_York
+            .with_ymd_and_hms(2026, 3, 8, 3, 30, 0)
+            .unwrap()
+            .timestamp_millis();
+        assert_eq!(next, want);
+    }
+
+    #[test]
+    fn a_long_absence_still_finds_the_next_day_quickly() {
+        // 3 年ぶりに起動しても、毎日のリマインダーは、次の日時に進む
+        let at = ny(2023, 1, 10, 9);
+        let now = ny(2026, 1, 10, 12);
+        let next = advance_days(&chrono_tz::America::New_York, at, 1, now);
+        assert_eq!(next, ny(2026, 1, 11, 9));
+    }
+
+    #[test]
+    fn the_reminder_cap_counts_everything() {
+        assert!(has_room(0));
+        assert!(has_room(MAX_REMINDERS - 1));
+        assert!(!has_room(MAX_REMINDERS));
+        assert!(!has_room(MAX_REMINDERS + 5));
+        assert!(too_many().contains(&MAX_REMINDERS.to_string()));
+    }
+
+    #[test]
+    fn bubbles_are_only_for_a_visible_mascot_and_an_active_screen() {
+        assert!(bubble_visible(true, false));
+        assert!(!bubble_visible(false, false));
+        assert!(!bubble_visible(true, true));
+        assert!(!bubble_visible(false, true));
     }
 }

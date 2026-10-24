@@ -1,6 +1,10 @@
 //! トレイメニューで変更できる設定と、終了後も残す状態（位置・表示）を JSON に保存する
 
-use std::{fs, path::PathBuf, sync::Mutex};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    sync::Mutex,
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -150,6 +154,21 @@ impl Default for Settings {
     }
 }
 
+/// 設定を JSON にして保存する。いったん別のファイルに書いてから置き換えるので、
+/// 書いている途中でアプリが終わっても、前の設定ファイルが壊れない
+fn write_atomically(path: &Path, settings: &Settings) -> Result<(), String> {
+    let json = serde_json::to_string_pretty(settings).map_err(|e| e.to_string())?;
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    let tmp = path.with_extension("json.tmp");
+    fs::write(&tmp, json).map_err(|e| e.to_string())?;
+    fs::rename(&tmp, path).map_err(|e| {
+        let _ = fs::remove_file(&tmp);
+        e.to_string()
+    })
+}
+
 pub struct Store {
     path: PathBuf,
     settings: Mutex<Settings>,
@@ -178,11 +197,9 @@ impl Store {
     pub fn update(&self, f: impl FnOnce(&mut Settings)) {
         let mut settings = self.settings.lock().unwrap();
         f(&mut settings);
-        if let Some(dir) = self.path.parent() {
-            let _ = fs::create_dir_all(dir);
-        }
-        if let Ok(json) = serde_json::to_string_pretty(&*settings) {
-            let _ = fs::write(&self.path, json);
+        // 保存できなくても、アプリは動き続ける。ただ、次の起動で設定が戻ってしまうので、理由を残す
+        if let Err(e) = write_atomically(&self.path, &settings) {
+            eprintln!("設定を保存できませんでした（{}）: {e}", self.path.display());
         }
     }
 }
@@ -281,5 +298,26 @@ mod tests {
         assert_eq!(s.countdown_mode, CountdownMode::Random);
         let s: Settings = serde_json::from_str(r#"{"countdown_mode":"never"}"#).unwrap();
         assert_eq!(s.countdown_mode, CountdownMode::Never);
+    }
+
+    #[test]
+    fn saving_leaves_no_temporary_file_and_replaces_the_old_one() {
+        let path = temp_path("atomic.json");
+        let _ = fs::remove_file(&path);
+        let store = Store::load(path.clone());
+        store.update(|s| s.scale = 2.0);
+        store.update(|s| s.scale = 0.5);
+        assert!(!path.with_extension("json.tmp").exists());
+        assert_eq!(Store::load(path).get().scale, 0.5);
+    }
+
+    #[test]
+    fn a_failed_save_keeps_the_settings_in_memory_and_does_not_panic() {
+        // 親が「ファイル」なので、ディレクトリを作れず、保存に失敗する
+        let blocker = temp_path("blocker");
+        fs::write(&blocker, "x").unwrap();
+        let store = Store::load(blocker.join("settings.json"));
+        store.update(|s| s.walking = false);
+        assert!(!store.get().walking);
     }
 }

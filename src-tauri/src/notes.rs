@@ -45,11 +45,15 @@ pub fn copy_to_clipboard(text: &str) -> bool {
         .stdin
         .take()
         .is_some_and(|mut stdin| stdin.write_all(text.as_bytes()).is_ok());
-    child.wait().is_ok() && wrote
+    // 終了コードも見る（0 以外で終わったら、コピーできていない）
+    wrote && child.wait().is_ok_and(|status| status.success())
 }
 
 fn read_clipboard() -> Option<String> {
     let output = Command::new("pbpaste").env("LANG", LOCALE).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
     String::from_utf8(output.stdout).ok()
 }
 

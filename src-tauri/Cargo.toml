@@ -23,3 +23,6 @@ objc2-app-kit = { version = "0.3", default-features = false, features = ["std", 
 tauri-plugin-single-instance = "2"
 tauri-plugin-notification = "2"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+
+[dev-dependencies]
+chrono-tz = "0.10"

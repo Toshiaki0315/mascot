@@ -92,7 +92,8 @@ function closeReminder(snooze: boolean) {
   reminderShown = false;
   clearTimeout(remindTimer);
   if (snooze && currentReminder.snooze) {
-    void invoke("snooze_reminder", { text: currentReminder.text });
+    // 件数の上限を超えるときは、理由が返るので、ひとことで伝える
+    invoke("snooze_reminder", { text: currentReminder.text }).catch((err) => bubble.say(String(err)));
   }
   void invoke("hide_bubble");
   showNextReminder();
