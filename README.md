@@ -35,6 +35,9 @@ Tauri v2 (Rust + TypeScript) を使用した macOS 向けデスクトップマ�
 | `make icon` | `scripts/gen-icon.mjs` からアプリアイコンを作り直す | `src-tauri/icons/` |
 | `make test` | テストを実行（フロントエンド + Rust） | — |
 | `make check` | CI と同じ確認（型チェック・テスト・`cargo fmt`・`clippy`） | — |
+| `make e2e` | 画面まわりの回帰テスト（[後述](#画面まわりの回帰テスト)） | — |
+| `make bump` | バージョンを上げる（`LEVEL=minor` / `major`、または `VERSION=1.2.3`） | 関係する 5 つのファイル |
+| `make notes` | リリースノートの下書きを出す（`TAG=v1.2.3`） | 画面に出す |
 | `make clean` | ビルド成果物を削除 | — |
 
 ※ 初回はRustのコンパイルが行われるため、数分程度時間がかかります。
@@ -115,43 +118,74 @@ Tauri v2 (Rust + TypeScript) を使用した macOS 向けデスクトップマ�
 *   **ランダム移動**: Rust 側のスレッドがウィンドウの位置を少しずつ動かし、進行方向をフロントエンドへ通知して、歩くアニメーションと視線を切り替えます。座標はすべて macOS のポイント単位で扱うので、倍率の違うモニターをまたいでもずれません。
 *   **窓に乗る・投げる**: 画面に出ているウィンドウの一覧から、ふちが見えている窓を選んで放物線で飛び乗ります。ドラッグ中はウィンドウの位置を記録しておき、マウスのボタンが離された瞬間の速さで投げます。
 *   **眠る・全画面の検出**: macOS の CoreGraphics から、最後の入力からの経過秒数、マウスのボタンの状態、画面に出ているウィンドウの一覧を読みます。どれも画面収録やアクセシビリティなどの権限は不要です。
-*   **省電力**: 歩いている・飛んでいる間だけ約 60fps で動かし、じっとしている間は 0.1 秒間隔に落とします。カーソルが遠い間は監視の間隔を延ばし、フロントエンドへも通知しません。
+*   **省電力**: 飛んでいる・ドラッグ中は約 60fps、歩いている間は約 30fps で動かし、じっとしている間は 0.1 秒間隔に落とします。カーソルが遠い間は監視の間隔を延ばし、フロントエンドへも通知しません。ふきだしを出していない間は、ふきだしの追従も休みます。CPU の使用量は `scripts/measure-cpu.sh <アプリの実行ファイル>` で測れます。
 
 ## リリースの手順
-1. `package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json` の `version` を上げてコミット・push します。
-2. `v` + バージョンのタグ（例: `v0.3.0`）を push します。
+1. バージョンを上げて、コミット・push します。
    ```bash
-   git tag v0.3.0
+   make bump LEVEL=minor
+   ```
+   `make bump` だけなら 0.0.1 上がります（`LEVEL=major`、`VERSION=1.2.3` も使えます）。
+2. 必要なら、リリースノートの下書きを確かめます（`make notes`）。前のタグからのコミットを、新機能・修正・変更に分けて出します。
+3. `v` + バージョンのタグを push します。
+   ```bash
+   git tag v0.8.0
    ```
    ```bash
-   git push origin v0.3.0
+   git push origin v0.8.0
    ```
-3. GitHub Actions（[.github/workflows/release.yml](.github/workflows/release.yml)）が dmg をビルドして、リリースに添付します。リリースがまだなければ、自動生成のリリースノートで作られます。タグと `tauri.conf.json` のバージョンが違うと失敗します。
+4. GitHub Actions（[.github/workflows/release.yml](.github/workflows/release.yml)）が dmg をビルドして、リリースに添付します。リリースがまだなければ、下書きのリリースノートで作ります（すでに作ってあれば、dmg だけを添付します）。タグと `tauri.conf.json` のバージョンが違うと失敗します。
 
 push とプルリクエストのたびに、[.github/workflows/ci.yml](.github/workflows/ci.yml) で `make check` と同じ確認が走ります。
 
+### 画面まわりの回帰テスト
+`make e2e` で、全画面アプリの Space やプレゼンテーションの状態を実際に作り、マスコットとふきだしの出方を確かめます。
+
+*   作業用のコピーに識別子を分けたテスト用のアプリを作るので、普段使っているアプリや設定には触れません
+*   実行中は約 1 分、画面が切り替わります。本体の画面（内蔵ディスプレイ）を使い、実行中はマウスやキーボードに触らないでください
+*   画面を操作するので CI では動きません。手元の Mac で実行します
+
 ## プロジェクト構成
 ```
-├── Makefile                # make dev / app / dmg / icon / test / check
-├── index.html              # キャラクターを描く SVG とふきだしの入れ物
-├── scripts/gen-icon.mjs    # アプリアイコン・トレイアイコン（ドット絵）の生成スクリプト
-├── .github/workflows/      # CI と自動リリース
-├── src/
-│   ├── main.ts             # ホバー判定、クリック・ドラッグ、視線、しぐさ、時報
-│   ├── sprite.ts           # キャラクターのドット絵の定義と SVG への描画
-│   ├── speech.ts           # ふきだしのセリフと表示
-│   ├── sprite.test.ts      # フロントエンドのテスト（npm test）
-│   └── styles.css          # 色とアニメーション
+├── Makefile                  # make dev / app / dmg / icon / test / check / e2e / bump / notes
+├── index.html                # マスコット本体のページ（キャラクターを描く SVG）
+├── bubble.html               # 大きなふきだしのページ（マスコットとは別の透明なウィンドウ）
+├── reminders.html            # リマインダー・タイマー・ポモドーロ・メモ・天気の画面
+├── scripts/
+│   ├── gen-icon.mjs          # アプリアイコン・トレイアイコン（ドット絵）の生成
+│   ├── bump.mjs              # バージョンを上げる（make bump）
+│   ├── release-notes.mjs     # リリースノートの下書き（make notes、自動リリース）
+│   ├── measure-cpu.sh        # CPU の使用量を測る
+│   └── e2e/                  # 画面まわりの回帰テスト（make e2e）
+├── .github/workflows/        # CI と自動リリース
+├── src/                      # フロントエンド（TypeScript）
+│   ├── main.ts               # マスコット：ホバー判定、クリック・ドラッグ、視線、しぐさ、時報、天気
+│   ├── sprite.ts             # キャラクターのドット絵の定義と SVG への描画
+│   ├── speech.ts             # セリフと、ふつうのおしゃべりのふきだし
+│   ├── bubble-window.ts      # 大きなふきだしのウィンドウの中身
+│   ├── tabs.ts               # 画面の見出し（タブ）の切り替え
+│   ├── reminders.ts / timers.ts / notes.ts / weather-tab.ts  # 各タブ
+│   ├── weather.ts            # 天気の取得（Open-Meteo）
+│   ├── *-format.ts           # 表示用の文字列など（DOM に触れない部分）
+│   └── *.test.ts             # フロントエンドのテスト（npm test）
 └── src-tauri/
-    ├── tauri.conf.json     # ウィンドウ設定（透過・最前面・フォーカスなし、148×206）
-    ├── capabilities/       # フロントエンドに許可する API
+    ├── tauri.conf.json       # ウィンドウ設定、署名
+    ├── capabilities/         # フロントエンドに許可する API
     └── src/
-        ├── lib.rs          # 起動処理、クリックスルー、カーソル監視、大きさの変更
-        ├── tray.rs         # トレイアイコンと設定メニュー
-        ├── about.rs        # 「Desktop Mascot について」の情報パネル
-        ├── wander.rs       # 歩く・窓に乗る・投げられる・眠る・全画面で隠れる、を決めるスレッド
-        ├── physics.rs      # 投げる・落ちる・飛び乗る動きの計算
-        ├── geometry.rs     # 画面・ウィンドウの座標計算（マルチモニター対応）
-        ├── system.rs       # macOS の入力経過時間・マウスボタン・ウィンドウ一覧の取得
-        └── settings.rs     # 設定と位置の保存・読み込み
+        ├── lib.rs            # 起動処理、クリックスルー、カーソル監視、大きさの変更
+        ├── tray.rs           # トレイアイコンと右クリックのメニュー
+        ├── about.rs          # 「Desktop Mascot について」の情報パネル
+        ├── bubble.rs         # 大きなふきだしのウィンドウ（位置合わせ・表示）
+        ├── wander.rs         # 歩く・窓に乗る・投げられる・眠る・全画面で隠れる、を決めるスレッド
+        ├── physics.rs        # 投げる・落ちる・飛び乗る動きの計算
+        ├── geometry.rs       # 画面・ウィンドウ・カーソルの座標計算（マルチモニター対応）
+        ├── system.rs         # macOS の入力経過時間・マウスボタン・ウィンドウ一覧の取得
+        ├── reminder.rs / pomodoro.rs / notes.rs / weather.rs  # 各機能の保存と IPC
+        └── settings.rs       # 設定と位置の保存・読み込み
 ```
+
+## 今後の課題
+*   **自動アップデート**: 新しい版を知らせ、入れ替えまで行う仕組み（Tauri の updater プラグイン）は、次の理由で見送っています。
+    *   更新ファイルに署名する秘密鍵を、自動リリースのために GitHub のシークレットに預けることの安全性を見きわめたい
+    *   近ごろのセキュリティ事情から、アプリが自分で更新されることを好まない人も多い
+    *   入れるなら、設定で有効・無効を選べる形（既定は無効）にするのがよさそう

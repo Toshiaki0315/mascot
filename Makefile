@@ -5,6 +5,7 @@
 #   make icon  scripts/gen-icon.mjs からアプリアイコンを作り直す
 #   make test  テストを実行（フロントエンド + Rust）
 #   make check CI と同じ確認（型チェック・テスト・fmt・clippy）
+#   make e2e   画面まわりの回帰テスト（全画面アプリの Space など。約 1 分、画面が切り替わる）
 #   make bump  バージョンを上げる（LEVEL=minor / major、または VERSION=1.2.3）
 #   make notes リリースノートの下書きを出す（TAG=v1.2.3、省略時は今のバージョン）
 
@@ -15,7 +16,7 @@ ICON_TMP := .icon-build
 # macOS 版で使うアイコンだけを src-tauri/icons にコピーする
 ICON_FILES := 32x32.png 128x128.png 128x128@2x.png icon.icns icon.ico icon.png
 
-.PHONY: help dev app dmg icon test check bump notes clean
+.PHONY: help dev app dmg icon test check e2e bump notes clean
 
 help:
 	@echo "make dev   開発モードで起動"
@@ -24,6 +25,7 @@ help:
 	@echo "make icon  アプリアイコンを作り直す"
 	@echo "make test  テストを実行"
 	@echo "make check CI と同じ確認を実行"
+	@echo "make e2e   画面まわりの回帰テスト（約 1 分、画面が切り替わる）"
 	@echo "make bump  バージョンを上げる（LEVEL=minor / major、または VERSION=1.2.3）"
 	@echo "make notes リリースノートの下書きを出す（TAG=v1.2.3）"
 	@echo "make clean ビルド成果物を削除"
@@ -59,6 +61,10 @@ check: node_modules
 	npm run build
 	npm test
 	cd src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
+
+# 手元の Mac で実行する（画面を操作するので CI では動かない）
+e2e: node_modules
+	zsh scripts/e2e/run.sh
 
 # 例: make bump / make bump LEVEL=minor / make bump VERSION=1.0.0
 bump:
