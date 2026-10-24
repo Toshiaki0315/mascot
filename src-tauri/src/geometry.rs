@@ -120,6 +120,21 @@ pub fn bring_back_if_lost(window: &WebviewWindow) -> Option<(f64, f64)> {
     Some((x, y))
 }
 
+/// tao の cursor_position()（物理ピクセル）を、ウィンドウ左上を原点にしたポイントに直す。
+/// tao はカーソル座標を「メイン画面」の倍率で物理ピクセルにするので、`primary_scale` には
+/// マスコットのいる画面ではなく、メイン画面の倍率を渡すこと
+/// （倍率の違う外付けディスプレイにいると、カーソルの位置がずれて操作できなくなる）
+pub fn cursor_in_window(
+    cursor_physical: (f64, f64),
+    primary_scale: f64,
+    window: Rect,
+) -> (f64, f64) {
+    (
+        cursor_physical.0 / primary_scale - window.x,
+        cursor_physical.1 / primary_scale - window.y,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -137,6 +152,39 @@ mod tests {
         let a = Rect::new(0.0, 0.0, 100.0, 100.0);
         assert!(a.intersects(&Rect::new(50.0, 50.0, 100.0, 100.0)));
         assert!(!a.intersects(&Rect::new(100.0, 0.0, 10.0, 10.0)));
+    }
+
+    #[test]
+    fn cursor_on_the_retina_main_display() {
+        // メイン画面 2 倍。カーソルはポイントで (810, 620)、ウィンドウは (800, 600)
+        let window = Rect::new(800.0, 600.0, 148.0, 206.0);
+        assert_eq!(
+            cursor_in_window((1620.0, 1240.0), 2.0, window),
+            (10.0, 20.0)
+        );
+    }
+
+    #[test]
+    fn cursor_on_a_1x_external_display_next_to_a_retina_main_display() {
+        // メイン画面 2 倍、外付けディスプレイ 1 倍（メイン画面の左上に置いてある）。
+        // マスコットは外付けディスプレイの (-734, -755)。カーソルはポイントで (-724, -735)。
+        // tao は外付けディスプレイ上でも、メイン画面の倍率 2 でカーソルを物理ピクセルにする
+        let window = Rect::new(-734.0, -755.0, 148.0, 206.0);
+        assert_eq!(
+            cursor_in_window((-1448.0, -1470.0), 2.0, window),
+            (10.0, 20.0)
+        );
+        // マスコットのいる画面の倍率（1）で割ると、ずれてキャラクターに乗れなくなる（以前の不具合）
+        assert_ne!(
+            cursor_in_window((-1448.0, -1470.0), 1.0, window),
+            (10.0, 20.0)
+        );
+    }
+
+    #[test]
+    fn cursor_with_a_1x_main_display() {
+        let window = Rect::new(100.0, 50.0, 74.0, 103.0);
+        assert_eq!(cursor_in_window((130.0, 90.0), 1.0, window), (30.0, 40.0));
     }
 
     #[test]

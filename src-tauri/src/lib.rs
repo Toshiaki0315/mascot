@@ -167,10 +167,9 @@ fn spawn_cursor_watcher(app: AppHandle, shared: Arc<Shared>) {
                 continue;
             };
             let rect = geometry.rect;
-            let payload = CursorPayload {
-                x: cursor.x / geometry.cursor_scale - rect.x,
-                y: cursor.y / geometry.cursor_scale - rect.y,
-            };
+            let (x, y) =
+                geometry::cursor_in_window((cursor.x, cursor.y), geometry.cursor_scale, rect);
+            let payload = CursorPayload { x, y };
             let (cx, cy) = (rect.w / 2.0, rect.h / 2.0);
             let now_near =
                 (payload.x - cx).hypot(payload.y - cy) < rect.w.max(rect.h) * CURSOR_NEAR_RANGE;

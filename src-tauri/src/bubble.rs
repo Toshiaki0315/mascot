@@ -27,6 +27,8 @@ pub const LABEL: &str = "bubble";
 const GAP: f64 = 4.0;
 /// 追いかける間隔
 const FOLLOW_INTERVAL: Duration = Duration::from_millis(33);
+/// ふきだしを出していない間の見回りの間隔
+const IDLE_INTERVAL: Duration = Duration::from_millis(250);
 
 /// いま出しているふきだしの状態
 pub struct BubbleState {
@@ -210,18 +212,35 @@ pub fn bubble_action(app: AppHandle, action: String) {
     }
 }
 
-/// マスコットが動いたら、ふきだしも追いかける
+/// マスコットが動いたら、ふきだしも追いかける。
+/// ふきだしを出していない間は、ゆっくり見回るだけにして CPU を休ませる
+/// （出した瞬間の位置合わせは bubble_resize で済ませている）
 pub fn spawn_follower(app: AppHandle, shared: Arc<Shared>, state: Arc<BubbleState>) {
     thread::spawn(move || {
-        let mut last: Option<(f64, f64)> = None;
+        // 前回位置を合わせたときの、マスコットの位置・大きさと、ふきだしの大きさ
+        let mut last: Option<(Rect, (f64, f64))> = None;
         loop {
-            thread::sleep(FOLLOW_INTERVAL);
-            if !state.visible.load(Ordering::Relaxed) {
+            let visible = state.visible.load(Ordering::Relaxed);
+            thread::sleep(if visible {
+                FOLLOW_INTERVAL
+            } else {
+                IDLE_INTERVAL
+            });
+            if !visible {
                 last = None;
                 continue;
             }
             if mascot_hidden(&shared) {
                 dismiss(&app);
+                continue;
+            }
+            // マスコットの位置は、頭脳スレッドが共有しているものを使う（メインスレッドに問い合わせない）
+            let Some(mascot) = shared.geometry().map(|g| g.rect) else {
+                continue;
+            };
+            let size = *state.size.lock().unwrap();
+            // マスコットもふきだしも変わっていなければ、何もしない
+            if last.is_some_and(|(r, s)| same_rect(&r, &mascot) && s == size) {
                 continue;
             }
             let (Some(main), Some(bubble)) = (
@@ -230,20 +249,18 @@ pub fn spawn_follower(app: AppHandle, shared: Arc<Shared>, state: Arc<BubbleStat
             ) else {
                 continue;
             };
-            let size = *state.size.lock().unwrap();
-            let Some(mascot) = geometry::window_rect(&main) else {
-                continue;
-            };
             let Some(work) = work_area_of(&main, mascot) else {
                 continue;
             };
             let pos = bubble_position(mascot, size, work);
-            if last != Some(pos) {
-                last = Some(pos);
-                let _ = bubble.set_position(LogicalPosition::new(pos.0, pos.1));
-            }
+            let _ = bubble.set_position(LogicalPosition::new(pos.0, pos.1));
+            last = Some((mascot, size));
         }
     });
+}
+
+fn same_rect(a: &Rect, b: &Rect) -> bool {
+    a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h
 }
 
 #[cfg(test)]
