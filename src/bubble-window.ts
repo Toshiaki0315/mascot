@@ -30,13 +30,14 @@ function render({ text, snooze, scale, chat }: Content) {
   card.replaceChildren(...(chat || buttons.length === 0 ? [message] : [message, actions]));
 }
 
-await listen<Content>("bubble-content", (e) => {
+// 受け取りの準備は待たずに先へ進む（失敗しても、下のクリックの処理は登録されるように）
+listen<Content>("bubble-content", (e) => {
   render(e.payload);
   // getBoundingClientRect はレイアウトを済ませてから測る。
   // requestAnimationFrame は、まだ見えていない（隠れている）ウィンドウでは動かないので使わない
   const rect = wrap.getBoundingClientRect();
   void invoke("bubble_resize", { w: Math.ceil(rect.width), h: Math.ceil(rect.height) });
-});
+}).catch((err) => console.error("ふきだしの中身を受け取れません", err));
 
 // ボタンの上ならそのボタン、それ以外（文字や枠）なら、ふきだしを閉じる
 wrap.addEventListener("click", (e) => {

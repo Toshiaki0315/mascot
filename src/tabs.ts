@@ -22,5 +22,8 @@ function show(tab: string) {
 
 for (const b of buttons) b.addEventListener("click", () => show(b.dataset.tab ?? ""));
 
-await listen<string>("tools-tab", (e) => show(e.payload));
+// 受け取りの準備は待たずに先へ進む（失敗しても、最初のタブは表示されるように）
+listen<string>("tools-tab", (e) => show(e.payload)).catch((err) =>
+  console.error("タブの切り替えを受け取れません", err),
+);
 show(new URLSearchParams(location.search).get("tab") ?? "reminders");

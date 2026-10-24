@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { listen, type Event } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Bubble, hourLine, lineFor, type Occasion } from "./speech";
 import { CHARACTERS, renderSprite, type Character } from "./sprite";
@@ -16,6 +16,26 @@ type MovePayload = { moving: boolean; dir: -1 | 0 | 1 };
 type FlagPayload = { on: boolean };
 type SettingsPayload = { chatty: boolean; character: string };
 type SayPayload = { kind: "break" };
+
+// ---- Rust 側からの通知の受け取り ----
+
+/// 受け取りの準備（listen）の一覧。すべて片付いたら frontend_ready を呼ぶ
+const listening: Promise<unknown>[] = [];
+
+/// Rust 側からの通知を受け取る。準備を待たずに先へ進み、1 つが失敗しても、
+/// ほかの受け取りやマウスの処理は動くようにする（以前は 1 つ失敗すると、
+/// その後ろで登録するクリックやドラッグの処理まで止まり、マウス操作がまったく効かなくなった）
+function on<T>(event: string, handler: (e: Event<T>) => void) {
+  listening.push(
+    listen<T>(event, (e) => {
+      try {
+        handler(e);
+      } catch (err) {
+        console.error(`「${event}」の処理でエラーが起きました`, err);
+      }
+    }).catch((err) => console.error(`「${event}」を受け取れません`, err)),
+  );
+}
 
 /// 時刻になったリマインダー（表示待ちの列）
 type Announce = { text: string; snooze: boolean };
@@ -173,13 +193,13 @@ window.setInterval(() => {
 
 // クリックスルー中は WebView にマウスイベントが届かないため、
 // Rust 側がポーリングしたカーソル座標を受け取って判定する
-await listen<CursorPayload>("cursor-moved", (e) => {
+on<CursorPayload>("cursor-moved", (e) => {
   updateHover(e.payload.x, e.payload.y);
   if (!walking && !sleeping && !flying) lookAtCursor(e.payload.x, e.payload.y);
 });
 
 // ランダム移動に合わせて、歩くアニメーションと視線を切り替える
-await listen<MovePayload>("mascot-move", (e) => {
+on<MovePayload>("mascot-move", (e) => {
   const wasWalking = walking;
   walking = e.payload.moving;
   mascot.classList.toggle("walking", walking);
@@ -193,7 +213,7 @@ await listen<MovePayload>("mascot-move", (e) => {
 });
 
 // 投げられた・落ちている・窓へ飛び乗っている
-await listen<FlagPayload>("mascot-fly", (e) => {
+on<FlagPayload>("mascot-fly", (e) => {
   const wasFlying = flying;
   flying = e.payload.on;
   mascot.classList.toggle("flying", flying);
@@ -205,7 +225,7 @@ await listen<FlagPayload>("mascot-fly", (e) => {
   }
 });
 
-await listen<FlagPayload>("mascot-sleep", (e) => {
+on<FlagPayload>("mascot-sleep", (e) => {
   const wasSleeping = sleeping;
   sleeping = e.payload.on;
   mascot.classList.toggle("sleeping", sleeping);
@@ -215,7 +235,7 @@ await listen<FlagPayload>("mascot-sleep", (e) => {
   else if (wasSleeping) say("wake");
 });
 
-await listen<FlagPayload>("mascot-suppress", (e) => {
+on<FlagPayload>("mascot-suppress", (e) => {
   suppressed = e.payload.on;
   stage.classList.toggle("suppressed", suppressed);
   if (suppressed) {
@@ -236,7 +256,7 @@ await listen<FlagPayload>("mascot-suppress", (e) => {
   }
 });
 
-await listen<SettingsPayload>("mascot-settings", (e) => {
+on<SettingsPayload>("mascot-settings", (e) => {
   chatty = e.payload.chatty;
   if (!chatty) bubble.hide();
   const next = CHARACTERS.find((c) => c === e.payload.character) ?? "tora";
@@ -246,7 +266,7 @@ await listen<SettingsPayload>("mascot-settings", (e) => {
   }
 });
 
-await listen<Announce>("mascot-reminder", (e) => {
+on<Announce>("mascot-reminder", (e) => {
   // 全画面アプリの上などで姿が見えない間は、通知センターに出す
   if (suppressed) {
     void invoke("notify_reminder", { text: e.payload.text });
@@ -257,7 +277,7 @@ await listen<Announce>("mascot-reminder", (e) => {
 });
 
 // コピーしたよ、など短いひとこと（おしゃべりの設定に関係なく出す）
-await listen<string>("mascot-toast", (e) => {
+on<string>("mascot-toast", (e) => {
   if (!suppressed && !sleeping && !reminderShown) bubble.say(e.payload);
 });
 
@@ -284,14 +304,11 @@ async function checkWeather(force: boolean) {
   }
 }
 
-await listen("weather-now", () => void checkWeather(true));
+on("weather-now", () => void checkWeather(true));
 
-await listen<SayPayload>("mascot-say", (e) => {
+on<SayPayload>("mascot-say", (e) => {
   say(e.payload.kind);
 });
-
-// 受け取りの準備ができたので、起動直後に送られて取りこぼした状態を送り直してもらう
-await invoke("frontend_ready");
 
 // 朝の天気：起動直後と、そのあと 10 分ごとに確認する（知らせるのは 1 日 1 回）
 void checkWeather(false);
@@ -333,7 +350,7 @@ function spin() {
 
 // 大きなふきだしのボタンやクリック（専用のウィンドウから Rust 経由で届く）。
 // マスコットを隠したときなど、Rust 側で閉じたときも "close" で届く
-await listen<string>("reminder-action", (e) => {
+on<string>("reminder-action", (e) => {
   // リマインダーを出していなければ、ふつうのおしゃべりのクリック
   if (reminderShown) closeReminder(e.payload === "snooze");
   else bubble.hide();
@@ -380,3 +397,7 @@ window.addEventListener("mouseup", (e) => {
   }
   pressAt = null;
 });
+
+// 受け取りの準備がすべて片付いたら（失敗したものがあっても）、
+// 起動直後に送られて取りこぼした状態を送り直してもらう
+void Promise.all(listening).then(() => invoke("frontend_ready"));
