@@ -1,5 +1,6 @@
 # v で始まるタグを push すると、dmg をビルドして GitHub のリリースに添付する。
-# リリースがまだなければ自動生成のリリースノートで作り、すでにあれば dmg だけを追加する。
+# リリースがまだなければ、コミットから作った下書きのリリースノート（scripts/release-notes.mjs）で作り、
+# すでにあれば dmg だけを追加・差し替える。
 #
 # Actions の画面から手動でも実行できる（workflow_dispatch）。
 #   - tag を空にすると、ビルドだけして dmg を Actions の成果物に置く（試しにビルドしたい時）
@@ -30,6 +31,8 @@ jobs:
       - uses: actions/checkout@v5
         with:
           ref: ${{ env.TAG || github.ref }}
+          # リリースノートの下書きに、前のタグからのコミットを使う
+          fetch-depth: 0
 
       - name: タグとアプリのバージョンが一致しているか確認
         if: env.TAG != ''
@@ -61,30 +64,32 @@ jobs:
         run: npm run tauri build -- --bundles dmg
 
       - name: dmg の名前をそろえる
-        id: dmg
+        id: files
         run: |
           version=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          mkdir -p out
           # ファイル名の空白は GitHub で "." に置き換わるので、ハイフンにしておく
-          asset="Desktop-Mascot_${version}_aarch64.dmg"
-          cp "src-tauri/target/release/bundle/dmg/Desktop Mascot_${version}_aarch64.dmg" "$asset"
-          shasum -a 256 "$asset"
-          echo "asset=$asset" >> "$GITHUB_OUTPUT"
+          dmg="out/Desktop-Mascot_${version}_aarch64.dmg"
+          cp "src-tauri/target/release/bundle/dmg/Desktop Mascot_${version}_aarch64.dmg" "$dmg"
+          shasum -a 256 "$dmg"
+          echo "dmg=$dmg" >> "$GITHUB_OUTPUT"
 
       - name: 成果物として置く（ビルドだけの時）
         if: env.TAG == ''
         uses: actions/upload-artifact@v7
         with:
           name: dmg
-          path: ${{ steps.dmg.outputs.asset }}
+          path: ${{ steps.files.outputs.dmg }}
 
       - name: リリースに dmg を添付
         if: env.TAG != ''
         env:
           GH_TOKEN: ${{ github.token }}
-          ASSET: ${{ steps.dmg.outputs.asset }}
+          DMG: ${{ steps.files.outputs.dmg }}
         run: |
           if gh release view "$TAG" > /dev/null 2>&1; then
-            gh release upload "$TAG" "$ASSET" --clobber
+            gh release upload "$TAG" "$DMG" --clobber
           else
-            gh release create "$TAG" "$ASSET" --title "$TAG" --generate-notes
+            node scripts/release-notes.mjs "$TAG" > out/notes.md
+            gh release create "$TAG" "$DMG" --title "$TAG" --notes-file out/notes.md
           fi
