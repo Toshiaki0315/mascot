@@ -48,6 +48,17 @@ export function weatherMessage(city: string, f: Forecast): string {
   return `${city}：${describeWeather(f.code)} ${f.max}/${f.min}℃ 雨${f.rain}%`;
 }
 
+/// 朝の天気の取得に失敗したときの、やり直し。起動直後やスリープからの復帰直後は、
+/// ネットワークがまだ使えないことがあるので、間をあけて数回だけやり直す
+/// （それでもだめなら、10 分ごとの確認に任せる）
+export const WEATHER_RETRY_MS = 60_000;
+export const WEATHER_MAX_RETRIES = 3;
+
+/// これまでにやり直した回数から、もう 1 回やり直してよいか
+export function shouldRetryWeather(retries: number): boolean {
+  return retries < WEATHER_MAX_RETRIES;
+}
+
 /// YYYY-MM-DD（ローカルの日付）
 export function localDate(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");

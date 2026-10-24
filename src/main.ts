@@ -7,6 +7,8 @@ import {
   fetchForecastJson,
   localDate,
   parseForecast,
+  shouldRetryWeather,
+  WEATHER_RETRY_MS,
   weatherMessage,
   type WeatherSettings,
 } from "./weather";
@@ -289,7 +291,13 @@ on<string>("mascot-toast", (e) => {
 // ---- 天気 ----
 
 /// 今日の天気を知らせる。`force` はメニューからの「今日の天気」（時刻や 1 日 1 回の制限を無視する）
+/// 取得の最中か（やり直しと 10 分ごとの確認が重ならないようにする）
+let weatherChecking = false;
+/// 続けて失敗した回数（成功したら 0 に戻す）
+let weatherRetries = 0;
+
 async function checkWeather(force: boolean) {
+  if (weatherChecking) return;
   const settings = await invoke<WeatherSettings>("get_weather_settings");
   const today = localDate(new Date());
   if (!force && (!settings.enabled || settings.last_date === today || new Date().getHours() < settings.hour)) {
@@ -299,13 +307,23 @@ async function checkWeather(force: boolean) {
     if (force) bubble.say("場所を決めてね（リマインダー画面の「天気」）");
     return;
   }
+  weatherChecking = true;
   try {
     const forecast = parseForecast(await fetchForecastJson(settings.lat, settings.lon));
     pendingReminders.push({ text: weatherMessage(settings.city, forecast), snooze: false });
     showNextReminder();
+    weatherRetries = 0;
     if (!force) void invoke("mark_weather_shown", { date: today });
   } catch {
-    if (force) bubble.say("天気を取得できなかったよ");
+    if (force) {
+      bubble.say("天気を取得できなかったよ");
+    } else if (shouldRetryWeather(weatherRetries)) {
+      // ネットワークがまだ使えないのかもしれないので、少し待ってやり直す
+      weatherRetries += 1;
+      window.setTimeout(() => void checkWeather(false), WEATHER_RETRY_MS);
+    }
+  } finally {
+    weatherChecking = false;
   }
 }
 

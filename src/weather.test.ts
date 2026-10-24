@@ -3,6 +3,9 @@ import { test } from "node:test";
 import {
   describeWeather,
   localDate,
+  shouldRetryWeather,
+  WEATHER_MAX_RETRIES,
+  WEATHER_RETRY_MS,
   parseForecast,
   parsePlaces,
   weatherMessage,
@@ -62,4 +65,13 @@ test("場所の候補を取り出す（不完全なものは捨てる）", () =>
     { name: "東京", detail: "東京都・日本", lat: 35.68, lon: 139.69 },
   ]);
   assert.deepEqual(parsePlaces({}), []);
+});
+
+test("取得に失敗したときは、1 分あけて、3 回までやり直す", () => {
+  assert.equal(WEATHER_RETRY_MS, 60_000);
+  assert.equal(WEATHER_MAX_RETRIES, 3);
+  assert.equal(shouldRetryWeather(0), true);
+  assert.equal(shouldRetryWeather(2), true);
+  assert.equal(shouldRetryWeather(3), false);
+  assert.equal(shouldRetryWeather(10), false);
 });
