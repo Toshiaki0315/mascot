@@ -63,3 +63,12 @@ export function hitsCustomImage(image: CustomImage, ux: number, uy: number): boo
   const p = toImagePixel(ux, uy, fitBox(image.width, image.height), image.width, image.height);
   return p !== null && isOpaqueAt(image.pixels, image.width, image.height, p.x, p.y);
 }
+
+/// ドロップされたファイルの中から、最初の画像を選ぶ（画像でなければ null）。
+/// 複数ドロップされても、使うのは 1 つだけ
+export function pickImageFile<T extends { type: string }>(files: ArrayLike<T>): T | null {
+  for (let i = 0; i < files.length; i++) {
+    if (files[i].type.startsWith("image/")) return files[i];
+  }
+  return null;
+}

@@ -343,6 +343,23 @@ input[type="number"] {
   align-items: center;
   gap: 14px;
 }
+#custom-drop {
+  padding: 10px;
+  border: 2px dashed transparent;
+  border-radius: 10px;
+}
+#custom-drop.dragover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.drop-hint {
+  flex: 1 1 100%;
+  color: var(--muted);
+  font-size: 12px;
+}
+#custom-drop {
+  flex-wrap: wrap;
+}
 .custom-frame {
   display: grid;
   place-items: center;

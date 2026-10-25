@@ -679,6 +679,8 @@ pub fn open_window(app: &AppHandle, tab: &str) {
         .title("Desktop Mascot")
         .inner_size(460.0, 620.0)
         .min_inner_size(360.0, 420.0)
+        // 画像のファイルのドラッグ＆ドロップ（じぶんの絵）を、ページが直接受け取れるようにする
+        .disable_drag_drop_handler()
         .center()
         .always_on_top(true)
         .build();

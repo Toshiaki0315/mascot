@@ -8,6 +8,7 @@ import {
   isOpaqueAt,
   MAX_SIDE,
   OPAQUE_ALPHA,
+  pickImageFile,
   scaleDown,
   toImagePixel,
   type CustomImage,
@@ -108,4 +109,17 @@ test("画像全体での判定：真ん中だけ不透明な画像", () => {
 test("ピクセルを持たない画像は、当たらない", () => {
   const image: CustomImage = { url: "data:image/png;base64,AAAA", width: 4, height: 4 };
   assert.equal(hitsCustomImage(image, 8, 8), false);
+});
+
+test("ドロップされたファイルから、最初の画像を選ぶ", () => {
+  const text = { type: "text/plain", name: "a.txt" };
+  const png = { type: "image/png", name: "b.png" };
+  const jpeg = { type: "image/jpeg", name: "c.jpg" };
+  assert.equal(pickImageFile([text, png, jpeg]), png);
+  assert.equal(pickImageFile([jpeg]), jpeg);
+});
+
+test("画像が 1 つもなければ null（種類のわからないファイルも含む）", () => {
+  assert.equal(pickImageFile([]), null);
+  assert.equal(pickImageFile([{ type: "text/plain" }, { type: "" }]), null);
 });
