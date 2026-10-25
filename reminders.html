@@ -42,6 +42,19 @@
           <p id="general-error" class="error" role="alert"></p>
         </form>
         <p class="note">キャラクターは、メニューバーのネコのアイコンのメニューから選びます。</p>
+
+        <h3>じぶんの絵</h3>
+        <p class="note">好きな画像を、キャラクターにできます（1 つだけ）。背景が透明な PNG がおすすめです（背景のある画像は、四角いまま、クリックできる範囲になります）。長いほうの辺が 256 ピクセルより大きいときは、小さくして使います。</p>
+        <div class="custom-row">
+          <span class="custom-frame"><img id="custom-preview" alt="" hidden /><span id="custom-empty">なし</span></span>
+          <div class="buttons">
+            <button id="custom-choose" type="button">画像を選ぶ…</button>
+            <button id="custom-clear" type="button">消す</button>
+          </div>
+          <input id="custom-file" type="file" accept="image/*" hidden />
+        </div>
+        <p id="custom-message" class="status"></p>
+        <p id="custom-error" class="error" role="alert"></p>
       </section>
 
       <section class="panel" data-panel="reminders" hidden>

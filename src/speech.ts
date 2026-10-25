@@ -28,9 +28,12 @@ const LINES: Record<Occasion, string[]> = {
   break: ["そろそろ休憩しよう？", "ちょっと伸びをしようよ"],
 };
 
-/// 鳴き声と語尾。いぬは「わん」、ネコは「にゃ」
+/// 鳴き声と語尾。いぬは「わん」、ネコは「にゃ」、じぶんの絵は「よ」
 function voice(character: Character) {
-  return character === "inu" ? { cry: "わん！", tail: "わん" } : { cry: "にゃーん", tail: "にゃ" };
+  if (character === "inu") return { cry: "わん！", tail: "わん" };
+  // 「じぶんの絵」は、何の生き物かわからないので、ふつうの言い方にする
+  if (character === "custom") return { cry: "…！", tail: "よ" };
+  return { cry: "にゃーん", tail: "にゃ" };
 }
 
 function pick<T>(items: T[]): T {

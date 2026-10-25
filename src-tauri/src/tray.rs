@@ -12,7 +12,7 @@ use tauri::{
 };
 
 use crate::{
-    about, bubble, emit_settings, notes, pomodoro,
+    about, bubble, custom, emit_settings, notes, pomodoro,
     reminder::{self, Reminder, Repeat},
     save_current_position,
     settings::Character,
@@ -130,11 +130,13 @@ pub fn setup(app: &tauri::App, shared: &Arc<Shared>) -> tauri::Result<()> {
     let characters = Character::ALL
         .iter()
         .map(|&character| {
+            // 「じぶんの絵」は、画像を選んであるときだけ選べる
+            let enabled = character != Character::Custom || custom::exists(app.handle());
             CheckMenuItem::with_id(
                 app,
                 character.id(),
                 character.label(),
-                true,
+                enabled,
                 settings.character == character,
                 None::<&str>,
             )
@@ -296,6 +298,24 @@ fn short(text: &str, max: usize) -> String {
         format!("{}…", chars[..max - 1].iter().collect::<String>())
     } else {
         flat
+    }
+}
+
+/// キャラクターのメニューを、いまの設定に合わせる（「じぶんの絵」を選べるか、どれにチェックを付けるか）。
+/// 「じぶんの絵」の画像を変えたり消したりしたときに呼ぶ
+pub fn sync_characters(app: &AppHandle) {
+    let (Some(items), Some(shared)) =
+        (app.try_state::<TrayItems>(), app.try_state::<Arc<Shared>>())
+    else {
+        return;
+    };
+    let current = shared.store.get().character;
+    let has_image = custom::exists(app);
+    for (character, item) in &items.characters {
+        let _ = item.set_checked(*character == current);
+        if *character == Character::Custom {
+            let _ = item.set_enabled(has_image);
+        }
     }
 }
 

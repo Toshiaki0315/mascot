@@ -54,16 +54,19 @@ pub enum Character {
     Mike,
     Inu,
     Kuranyan,
+    /// 自分で選んだ画像（1 つだけ。custom.rs）
+    Custom,
 }
 
 impl Character {
-    pub const ALL: [Character; 6] = [
+    pub const ALL: [Character; 7] = [
         Character::Tora,
         Character::Kuro,
         Character::Shiro,
         Character::Mike,
         Character::Inu,
         Character::Kuranyan,
+        Character::Custom,
     ];
 
     pub fn label(self) -> &'static str {
@@ -74,6 +77,7 @@ impl Character {
             Character::Mike => "三毛ネコ",
             Character::Inu => "いぬ",
             Character::Kuranyan => "くらにゃんぽい",
+            Character::Custom => "じぶんの絵",
         }
     }
 
@@ -86,6 +90,7 @@ impl Character {
             Character::Mike => "char-mike",
             Character::Inu => "char-inu",
             Character::Kuranyan => "char-kuranyan",
+            Character::Custom => "char-custom",
         }
     }
 
@@ -285,6 +290,7 @@ mod tests {
     fn character_names() {
         assert_eq!(Character::Mike.name(), "mike");
         assert_eq!(Character::Kuranyan.name(), "kuranyan");
+        assert_eq!(Character::Custom.name(), "custom");
         for c in Character::ALL {
             assert!(c.id().starts_with("char-"));
         }

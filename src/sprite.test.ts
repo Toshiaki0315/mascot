@@ -26,3 +26,7 @@ test("ドット絵が使うすべての色に、CSS の塗りの指定がある"
     assert.ok(css.includes(`.px-${color} `), `.px-${color} がありません`);
   }
 });
+
+test("じぶんの絵の語尾は「よ」", () => {
+  assert.equal(hourLine(15, "custom"), "15 時だよ");
+});

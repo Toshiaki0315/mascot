@@ -1,5 +1,6 @@
 mod about;
 mod bubble;
+mod custom;
 mod general;
 mod geometry;
 mod notes;
@@ -307,6 +308,9 @@ pub fn run() {
             notes::list_notes,
             notes::add_note,
             notes::delete_note,
+            custom::get_custom_image,
+            custom::set_custom_image,
+            custom::clear_custom_image,
             general::get_general,
             general::set_general,
             options::get_options,
@@ -342,6 +346,15 @@ pub fn run() {
                 store: Store::load(path),
             });
             app.manage(shared.clone());
+
+            // 「じぶんの絵」を選んだまま、画像のファイルがなくなっていたら、茶トラに戻す
+            if shared.store.get().character == settings::Character::Custom
+                && !custom::exists(app.handle())
+            {
+                shared
+                    .store
+                    .update(|s| s.character = settings::Character::Tora);
+            }
 
             tray::setup(app, &shared)?;
 

@@ -2,6 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type Event } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Bubble, hourLine, lineFor, type Occasion } from "./speech";
+import { hitsCustomImage, type CustomImage } from "./custom-image";
+import { decodeImage } from "./custom-image-dom";
 import { CHARACTERS, renderSprite, type Character } from "./sprite";
 import {
   fetchForecastJson,
@@ -60,7 +62,21 @@ const bubble = new Bubble(
 
 let character: Character = "tora";
 let chatty = true;
+/// 「じぶんの絵」の画像（選んでいなければ null）
+let customImage: CustomImage | null = null;
 renderSprite(mascot, character);
+
+/// 保存されている「じぶんの絵」を読み直す（キャラクターが「じぶんの絵」なら、描き直す）
+async function loadCustomImage() {
+  try {
+    const url = await invoke<string | null>("get_custom_image");
+    customImage = url ? await decodeImage(url) : null;
+  } catch (err) {
+    console.error("じぶんの絵を読み込めません", err);
+    customImage = null;
+  }
+  if (character === "custom") renderSprite(mascot, character, customImage ?? undefined);
+}
 
 let overMascot = false;
 let walking = false;
@@ -106,6 +122,14 @@ function hitTest(x: number, y: number): boolean {
   if (suppressed) return false;
   if (x < 0 || y < 0 || x >= window.innerWidth || y >= window.innerHeight) {
     return false;
+  }
+  if (character === "custom") {
+    // 画像は四角いが、当たるのは、透明でない部分だけ（SVG の座標 16×16 に直して、ピクセルを見る）
+    const rect = mascot.getBoundingClientRect();
+    return (
+      customImage !== null &&
+      hitsCustomImage(customImage, ((x - rect.left) / rect.width) * 16, ((y - rect.top) / rect.height) * 16)
+    );
   }
   const el = document.elementFromPoint(x, y);
   return el instanceof SVGElement && el.classList.contains("hit");
@@ -267,11 +291,14 @@ function applySettings(payload: SettingsPayload) {
   const next = CHARACTERS.find((c) => c === payload.character) ?? "tora";
   if (next !== character) {
     character = next;
-    renderSprite(mascot, character);
+    if (character === "custom" && !customImage) void loadCustomImage();
+    else renderSprite(mascot, character, customImage ?? undefined);
   }
 }
 
 on<SettingsPayload>("mascot-settings", (e) => applySettings(e.payload));
+// 設定の画面で、「じぶんの絵」の画像を選び直したり、消したりした
+on("mascot-custom-image", () => void loadCustomImage());
 
 on<Announce>("mascot-reminder", (e) => {
   // 全画面アプリの上などで姿が見えない間は、通知センターに出す

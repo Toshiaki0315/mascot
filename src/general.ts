@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { prepareImage } from "./custom-image-dom";
 
 // 「一般」の設定（歩き回る・歩く速さ・大きさ・おしゃべり・全画面アプリの上では隠れる・ログイン時に起動）。
 // data-general の付いた入力欄を、同じ名前の設定につなぐ。変えたらすぐ保存して、反映する
@@ -46,3 +47,56 @@ for (const el of inputs) {
 }
 
 show();
+
+// ---- じぶんの絵 ----
+
+const MAX_FILE_BYTES = 20 * 1024 * 1024;
+const preview = document.querySelector<HTMLImageElement>("#custom-preview")!;
+const empty = document.querySelector<HTMLElement>("#custom-empty")!;
+const fileInput = document.querySelector<HTMLInputElement>("#custom-file")!;
+const chooseButton = document.querySelector<HTMLButtonElement>("#custom-choose")!;
+const clearButton = document.querySelector<HTMLButtonElement>("#custom-clear")!;
+const customMessage = document.querySelector<HTMLElement>("#custom-message")!;
+const customError = document.querySelector<HTMLElement>("#custom-error")!;
+
+async function showCustom() {
+  const url = await invoke<string | null>("get_custom_image");
+  preview.hidden = url === null;
+  empty.hidden = url !== null;
+  if (url) preview.src = url;
+  clearButton.disabled = url === null;
+}
+
+chooseButton.addEventListener("click", () => fileInput.click());
+
+fileInput.addEventListener("change", async () => {
+  const file = fileInput.files?.[0];
+  // 同じファイルをもう一度選べるよう、選択をもどしておく
+  fileInput.value = "";
+  if (!file) return;
+  customError.textContent = "";
+  customMessage.textContent = "";
+  if (file.size > MAX_FILE_BYTES) {
+    customError.textContent = "ファイルが大きすぎます（20MB まで）";
+    return;
+  }
+  try {
+    await invoke("set_custom_image", { dataUrl: await prepareImage(file) });
+    customMessage.textContent = "「じぶんの絵」に切り替えました";
+    await showCustom();
+    // キャラクターが切り替わったので、設定も読み直す
+    general = await invoke<General>("get_general");
+    show();
+  } catch (err) {
+    customError.textContent = String(err instanceof Error ? err.message : err);
+  }
+});
+
+clearButton.addEventListener("click", async () => {
+  customError.textContent = "";
+  await invoke("clear_custom_image");
+  customMessage.textContent = "消しました（茶トラに戻しました）";
+  await showCustom();
+});
+
+await showCustom();

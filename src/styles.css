@@ -169,6 +169,11 @@ body {
   animation: bounce 0.4s steps(1) infinite;
 }
 
+/* 「じぶんの絵」：眠っている間は、少しうすくする */
+#mascot.sleeping .custom-image {
+  opacity: 0.7;
+}
+
 /* 表情の部品は普段は隠しておく。表情を出している間は通常の目を隠す */
 .face-happy,
 .face-sleep,

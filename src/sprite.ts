@@ -5,8 +5,13 @@
 // 色はキャラクターごとに styles.css の CSS 変数で決まる。
 // 目・表情は体の上に重ねる部品にして、CSS で切り替える
 
-export const CHARACTERS = ["tora", "kuro", "shiro", "mike", "inu", "kuranyan"] as const;
+import { fitBox, type CustomImage } from "./custom-image.ts";
+
+export const CHARACTERS = ["tora", "kuro", "shiro", "mike", "inu", "kuranyan", "custom"] as const;
 export type Character = (typeof CHARACTERS)[number];
+
+// 「じぶんの絵」は、ドット絵ではなく、選んだ画像をそのまま置く（画像は custom-image.ts）。
+// 目や口の部品は付けない（跳ねる・歩く・眠る・喜ぶの動きと、Z やハートは、ほかと同じ）
 
 const CAT_BODY = [
   "..OO........OO..",
@@ -165,6 +170,8 @@ const BODIES: Record<Character, string[]> = {
     [11, 7, "JJ"],
   ]),
   kuranyan: KURANYAN_BODY,
+  // 画像をそのまま置くので、ドット絵はない
+  custom: [],
 };
 
 // 通常の目。カーソルや進行方向に合わせて左右に 1 ドットずらす
@@ -274,7 +281,22 @@ function part(className: string, rows: string[], top: number, hit = false, left 
   return g;
 }
 
-export function renderSprite(svg: SVGSVGElement, character: Character = "tora") {
+/// 選んだ画像を、SVG の中に置く（縦横の比を保って、下の真ん中に）
+function customImageElement(image: CustomImage): SVGImageElement {
+  const box = fitBox(image.width, image.height);
+  const el = document.createElementNS(SVG_NS, "image");
+  el.setAttribute("href", image.url);
+  el.setAttribute("x", String(box.x));
+  el.setAttribute("y", String(box.y));
+  el.setAttribute("width", String(box.w));
+  el.setAttribute("height", String(box.h));
+  el.setAttribute("preserveAspectRatio", "none");
+  // 当たり判定は、画像の透明でない部分だけ（main.ts が、画像のピクセルを見て決める）
+  el.setAttribute("class", "custom-image hit");
+  return el;
+}
+
+export function renderSprite(svg: SVGSVGElement, character: Character = "tora", custom?: CustomImage) {
   for (const c of CHARACTERS) {
     svg.classList.toggle(`char-${c}`, c === character);
   }
@@ -285,29 +307,36 @@ export function renderSprite(svg: SVGSVGElement, character: Character = "tora") 
   const shadow = part("shadow", [SHADOW], SHADOW_ROW);
 
   const bounce = group("bounce");
-  drawRows(bounce, BODIES[character], 0, true);
   const zzz = group("zzz");
   zzz.append(part("z-small", Z_SMALL, -2, false, 7), part("z-large", Z_LARGE, -3, false, 6));
-  const kuranyan = character === "kuranyan";
-  bounce.append(
-    part("eyes", kuranyan ? KURANYAN_EYES : EYES, FACE_TOP),
-    ...(kuranyan
-      ? [
-          part("nose nose-front", KURANYAN_NOSE_FRONT, KURANYAN_NOSE_TOP),
-          part("nose nose-left", KURANYAN_NOSE_LEFT, KURANYAN_NOSE_TOP),
-          part("nose nose-right", KURANYAN_NOSE_RIGHT, KURANYAN_NOSE_TOP),
-          part("mouth", KURANYAN_MOUTH, KURANYAN_MOUTH_TOP),
-        ]
-      : []),
-    part("legs-a", LEGS_A, LEGS_TOP, true),
-    part("legs-b", LEGS_B, LEGS_TOP, true),
-    part("face-happy", kuranyan ? KURANYAN_HAPPY_FACE : HAPPY_FACE, FACE_TOP),
-    part("face-sleep", kuranyan ? KURANYAN_SLEEP_FACE : SLEEP_FACE, FACE_TOP),
-    part("face-yawn", kuranyan ? KURANYAN_YAWN_FACE : YAWN_FACE, FACE_TOP),
-    part("face-flying", kuranyan ? KURANYAN_FLYING_FACE : FLYING_FACE, FACE_TOP),
-    part("heart", HEART, 0),
-    zzz,
-  );
+
+  if (character === "custom") {
+    // 目や口の部品はない。画像と、ハートと Z だけ
+    if (custom) bounce.append(customImageElement(custom));
+    bounce.append(part("heart", HEART, 0), zzz);
+  } else {
+    drawRows(bounce, BODIES[character], 0, true);
+    const kuranyan = character === "kuranyan";
+    bounce.append(
+      part("eyes", kuranyan ? KURANYAN_EYES : EYES, FACE_TOP),
+      ...(kuranyan
+        ? [
+            part("nose nose-front", KURANYAN_NOSE_FRONT, KURANYAN_NOSE_TOP),
+            part("nose nose-left", KURANYAN_NOSE_LEFT, KURANYAN_NOSE_TOP),
+            part("nose nose-right", KURANYAN_NOSE_RIGHT, KURANYAN_NOSE_TOP),
+            part("mouth", KURANYAN_MOUTH, KURANYAN_MOUTH_TOP),
+          ]
+        : []),
+      part("legs-a", LEGS_A, LEGS_TOP, true),
+      part("legs-b", LEGS_B, LEGS_TOP, true),
+      part("face-happy", kuranyan ? KURANYAN_HAPPY_FACE : HAPPY_FACE, FACE_TOP),
+      part("face-sleep", kuranyan ? KURANYAN_SLEEP_FACE : SLEEP_FACE, FACE_TOP),
+      part("face-yawn", kuranyan ? KURANYAN_YAWN_FACE : YAWN_FACE, FACE_TOP),
+      part("face-flying", kuranyan ? KURANYAN_FLYING_FACE : FLYING_FACE, FACE_TOP),
+      part("heart", HEART, 0),
+      zzz,
+    );
+  }
 
   // 回転は跳ねる動きと transform が競合しないよう、外側のグループで行う
   const spin = group("spin");
