@@ -28,9 +28,10 @@ const LINES: Record<Occasion, string[]> = {
   break: ["そろそろ休憩しよう？", "ちょっと伸びをしようよ"],
 };
 
-/// 鳴き声と語尾。いぬは「わん」、ネコは「にゃ」、じぶんの絵は「よ」
+/// 鳴き声と語尾。いぬは「わん」、ネコは「にゃ」（くらにゃんぽいは「にゃん」）、じぶんの絵は「よ」
 function voice(character: Character) {
   if (character === "inu") return { cry: "わん！", tail: "わん" };
+  if (character === "kuranyan") return { cry: "にゃーん", tail: "にゃん" };
   // 「じぶんの絵」は、何の生き物かわからないので、ふつうの言い方にする
   if (character === "custom") return { cry: "…！", tail: "よ" };
   return { cry: "にゃーん", tail: "にゃ" };
@@ -43,9 +44,24 @@ function pick<T>(items: T[]): T {
 export function lineFor(occasion: Occasion, character: Character): string | null {
   if (Math.random() >= CHANCE[occasion]) return null;
   const { cry } = voice(character);
-  // 休憩中は、ときどき鳴き声だけ
+  // 休憩中は、ときどき鳴き声だけ（鳴き声には口ぐせを付けない）
   if (occasion === "rest" && Math.random() < 0.3) return cry;
-  return pick(LINES[occasion]);
+  return withHabit(pick(LINES[occasion]), character);
+}
+
+/// くらにゃんぽいでも「にゃん」を付けないセリフ（笑い声やため息は、そのままのほうが自然）
+const NO_HABIT = new Set(["えへへ", "ふぅ"]);
+
+/// キャラクターの口ぐせを付ける。いまは、くらにゃんぽいの文の最後に「にゃん」を付けるだけ。
+///   - 最後の「よ」「ね」「な」は取ってから付ける（「したよにゃん」のような重なりを避ける）
+///   - 最後に「！」「？」「〜」「…」や（かっこ）があれば、その前に付ける
+///   - 「終わりました」は「終わった」に言い換えてから付ける
+/// マスコット自身の言葉にだけ使う（自分で登録したリマインダーの文やエラーの文には使わない）
+export function withHabit(text: string, character: Character): string {
+  if (character !== "kuranyan" || NO_HABIT.has(text)) return text;
+  const [, body, tail] = text.match(/^([\s\S]*?)((?:（[^（）]*）)?[！？〜…!?]*)$/) ?? ["", text, ""];
+  const core = body.replace(/終わりました$/, "終わった").replace(/[よねな]$/, "");
+  return `${core}にゃん${tail}`;
 }
 
 export function hourLine(hour: number, character: Character): string {

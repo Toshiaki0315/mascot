@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type Event } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Bubble, hourLine, lineFor, type Occasion } from "./speech";
+import { Bubble, hourLine, lineFor, withHabit, type Occasion } from "./speech";
 import { hitsCustomImage, type CustomImage } from "./custom-image";
 import { decodeImage } from "./custom-image-dom";
 import { CHARACTERS, renderSprite, type Character } from "./sprite";
@@ -42,7 +42,8 @@ function on<T>(event: string, handler: (e: Event<T>) => void) {
 }
 
 /// 時刻になったリマインダー（表示待ちの列）
-type Announce = { text: string; snooze: boolean };
+/// voiced: マスコット自身の言葉か（ポモドーロの区切りなど）。キャラクターの口ぐせを付けてよいのはこちらだけ
+type Announce = { text: string; snooze: boolean; voiced?: boolean };
 const pendingReminders: Announce[] = [];
 /// いまふきだしに出しているリマインダー（全文。「5 分後」を押したときに使う）
 let currentReminder: Announce = { text: "", snooze: false };
@@ -100,7 +101,8 @@ function showNextReminder() {
   reminderShown = true;
   bubble.hide();
   rejoice();
-  void invoke("show_bubble", { text: next.text, snooze: next.snooze, chat: false });
+  const text = next.voiced ? withHabit(next.text, character) : next.text;
+  void invoke("show_bubble", { text, snooze: next.snooze, chat: false });
   remindTimer = window.setTimeout(() => closeReminder(false), REMIND_MS);
 }
 
@@ -312,6 +314,11 @@ on<Announce>("mascot-reminder", (e) => {
 
 // コピーしたよ、など短いひとこと（おしゃべりの設定に関係なく出す）
 on<string>("mascot-toast", (e) => {
+  if (!suppressed && !sleeping && !reminderShown) bubble.say(withHabit(e.payload, character));
+});
+
+// エラーの文など、システムから返った文（キャラクターの口ぐせは付けない）
+on<string>("mascot-toast-plain", (e) => {
   if (!suppressed && !sleeping && !reminderShown) bubble.say(e.payload);
 });
 
@@ -331,7 +338,7 @@ async function checkWeather(force: boolean) {
     return;
   }
   if (!settings.city) {
-    if (force) bubble.say("場所を決めてね（リマインダー画面の「天気」）");
+    if (force) bubble.say(withHabit("場所を決めてね（リマインダー画面の「天気」）", character));
     return;
   }
   weatherChecking = true;
@@ -343,7 +350,7 @@ async function checkWeather(force: boolean) {
     if (!force) void invoke("mark_weather_shown", { date: today });
   } catch {
     if (force) {
-      bubble.say("天気を取得できなかったよ");
+      bubble.say(withHabit("天気を取得できなかったよ", character));
     } else if (shouldRetryWeather(weatherRetries)) {
       // ネットワークがまだ使えないのかもしれないので、少し待ってやり直す
       weatherRetries += 1;

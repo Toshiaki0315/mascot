@@ -477,7 +477,7 @@ fn on_menu(app: &AppHandle, id: &str) {
         "pomo-stop" => pomodoro::stop_now(app, &shared),
         "notes-save-clip" => match notes::save_clipboard(app, &shared) {
             Ok(_) => reminder::toast(app, "クリップボードをメモに保存したよ"),
-            Err(e) => reminder::toast(app, &e),
+            Err(e) => reminder::toast_plain(app, &e),
         },
         id if id.starts_with("note-item-") => {
             let copied = id["note-item-".len()..]

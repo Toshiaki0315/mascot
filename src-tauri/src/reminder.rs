@@ -400,7 +400,7 @@ pub fn add_timer(
         return Err(format!("名前は {MAX_TEXT_CHARS} 文字以内にしてください"));
     }
     let text = if label.is_empty() {
-        format!("{minutes} 分のタイマーが終わりました")
+        default_timer_text(minutes)
     } else {
         format!("{label}：時間です")
     };
@@ -484,6 +484,10 @@ struct Announce {
     text: String,
     /// 「5 分後」のボタンを付けるか
     snooze: bool,
+    /// マスコット自身の言葉か（ポモドーロの区切り、名前のないタイマー）。
+    /// キャラクターの口ぐせ（くらにゃんぽいの「にゃん」）を付けてよいのはこちらだけ。
+    /// 自分で登録したリマインダーの文には付けない
+    voiced: bool,
 }
 
 /// ふきだしで知らせられる状態か。マスコットを隠している間と、画面がロックされている・
@@ -494,7 +498,7 @@ fn bubble_visible(mascot_visible: bool, screen_paused: bool) -> bool {
 }
 
 /// マスコットのふきだしで知らせる。マスコットを非表示にしている間は、通知センターに出す
-pub fn announce(app: &AppHandle, shared: &Shared, text: &str, snooze: bool) {
+pub fn announce(app: &AppHandle, shared: &Shared, text: &str, snooze: bool, voiced: bool) {
     let visible = bubble_visible(shared.visible.load(Ordering::Relaxed), shared.paused());
     if !visible {
         notify(app, text);
@@ -506,6 +510,7 @@ pub fn announce(app: &AppHandle, shared: &Shared, text: &str, snooze: bool) {
                 Announce {
                     text: text.to_string(),
                     snooze,
+                    voiced,
                 },
             );
         }
@@ -560,6 +565,25 @@ pub fn toast(app: &AppHandle, text: &str) {
     }
 }
 
+/// エラーの文など、システムから返った文をそのまま短く知らせる（キャラクターの口ぐせは付けない）
+pub fn toast_plain(app: &AppHandle, text: &str) {
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
+        let _ = window.emit("mascot-toast-plain", text);
+    }
+}
+
+/// 名前を付けずに始めたタイマーの、終わったときの文
+fn default_timer_text(minutes: u32) -> String {
+    format!("{minutes} 分のタイマーが終わりました")
+}
+
+/// 名前を付けずに始めたタイマーの文か（マスコット自身の言葉として扱う）
+fn is_default_timer_text(text: &str) -> bool {
+    text.split_once(' ')
+        .and_then(|(n, _)| n.parse::<u32>().ok())
+        .is_some_and(|minutes| default_timer_text(minutes) == text)
+}
+
 /// 事前に知らせる時刻になったリマインダーを探して、知らせた印を付ける
 fn take_leads(reminders: &mut [Reminder], now: i64) -> Vec<String> {
     let mut texts = Vec::new();
@@ -611,7 +635,8 @@ pub fn spawn_scheduler(app: AppHandle, shared: Arc<Shared>) {
                     say_countdown(&app, &shared, number);
                 }
             }
-            let mut messages: Vec<(String, bool)> = Vec::new();
+            // (文, 「5 分後」のボタンを付けるか, マスコット自身の言葉か)
+            let mut messages: Vec<(String, bool, bool)> = Vec::new();
             // 離席で止めたことを知らせるだけのときは、音を鳴らさない
             let mut sound = false;
 
@@ -627,7 +652,7 @@ pub fn spawn_scheduler(app: AppHandle, shared: Arc<Shared>) {
                     .store
                     .update(|s| leads = take_leads(&mut s.reminders, now));
                 sound |= !leads.is_empty() && settings.reminder_sound;
-                messages.extend(leads.into_iter().map(|t| (t, false)));
+                messages.extend(leads.into_iter().map(|t| (t, false, false)));
             }
 
             if shared.store.get().reminders.iter().any(|r| r.at <= now) {
@@ -644,12 +669,15 @@ pub fn spawn_scheduler(app: AppHandle, shared: Arc<Shared>) {
                         settings.reminder_sound
                     }
                 });
-                messages.extend(fired.into_iter().map(|r| (r.text, !r.timer)));
+                messages.extend(fired.into_iter().map(|r| {
+                    let voiced = r.timer && is_default_timer_text(&r.text);
+                    (r.text, !r.timer, voiced)
+                }));
             }
 
             if let Some((text, with_sound)) = pomodoro::tick(&app, &shared, now) {
                 sound |= with_sound && settings.pomodoro_sound;
-                messages.push((text, false));
+                messages.push((text, false, true));
             }
 
             if messages.is_empty() {
@@ -658,8 +686,8 @@ pub fn spawn_scheduler(app: AppHandle, shared: Arc<Shared>) {
             if sound {
                 play_sound();
             }
-            for (text, snooze) in messages {
-                announce(&app, &shared, &text, snooze);
+            for (text, snooze, voiced) in messages {
+                announce(&app, &shared, &text, snooze, voiced);
             }
         }
     });
@@ -897,6 +925,15 @@ mod tests {
         list[0].at += day;
         assert!(take_leads(&mut list, day).is_empty());
         assert_eq!(take_leads(&mut list, day + 5 * 60_000).len(), 1);
+    }
+
+    #[test]
+    fn default_timer_text_is_recognized() {
+        assert!(is_default_timer_text(&default_timer_text(5)));
+        assert!(is_default_timer_text("25 分のタイマーが終わりました"));
+        // 名前を付けたタイマーや、ふつうのリマインダーの文は、マスコット自身の言葉ではない
+        assert!(!is_default_timer_text("カップ麺：時間です"));
+        assert!(!is_default_timer_text("5 分後に会議"));
     }
 
     #[test]
